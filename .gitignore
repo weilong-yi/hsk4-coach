@@ -7,3 +7,4 @@ data/sentences.json
 data/gloss.json
 __pycache__/
 data/recordings/
+verify-runs/

@@ -162,7 +162,7 @@ def start_block(page, title, name):
 
 
 def session(page):
-    page.get_by_text("Start today's session").click()
+    page.locator("a.button.primary[href='#/session']").click()  # "Start today's session" after placement, "Start N-minute session" on home
     start_block(page, "Cards · 8 minutes", "10-session-start")
     n, shots = 0, set()
     transition = page.get_by_role("heading", name="Listen & read · 12 minutes")
