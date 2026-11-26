@@ -120,11 +120,11 @@ What you get:
 - **One note per word, character and component.** 学 is both a word and a character, so it has one note.
 - **Links.** Each note's properties link to its characters, components, meaning part, sound part, words containing it, and characters that share its sound part. For example 请 links to 讠 (meaning), 青 (sound) and 情 晴 清 猜 睛 精 (same sound part). The backlinks panel shows everything that points to a note.
 - **Your progress.** Word notes carry `state/known`, `state/learning`, `state/review`, `state/relearning` or `state/new` as tags, plus `due` and `known_neighbors`.
-- **Graph colours.** In the graph and local graph: green known, amber learning or review, blue new, lavender characters, grey components. Open a word, press **Cmd+P**, type "open local graph" to see its neighbourhood.
+- **Graph colours.** The same colours as the app's Graph page: aqua known, orange learning or review, blue new, dark grey components. Characters that are not words keep Obsidian's default grey (Obsidian cannot use shapes, and more colours would be hard to tell apart). Open a word, press **Cmd+P**, type "open local graph" to see its neighbourhood.
 - **HSK words.base.** Two tables: *Next words through characters I know* (unlearned words grouped by how many known words share a character, highest first, which makes them the easiest to learn next) and *Learning now*.
 - **Your own notes.** Write anything under **## My notes** at the bottom of a note. The export never touches that section. Everything above it is rewritten from the app, so edit only below it.
 
-If a new local graph pane has no colours, copy the groups from the main graph's **Groups** panel: `tag:#state/known`, `tag:#state/learning OR tag:#state/review OR tag:#state/relearning`, `tag:#state/new`, `tag:#hsk/character`, `tag:#hsk/component`.
+A new local graph pane starts without colours. Copy the groups from the main graph's **Groups** panel: `tag:#state/known` (#00a888), `tag:#state/learning OR tag:#state/review OR tag:#state/relearning` (#e76624), `tag:#state/new` (#338ced), `tag:#hsk/component` (#5c5c5c).
 
 ## 7. Back up your progress
 
