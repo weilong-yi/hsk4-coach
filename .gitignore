@@ -1,0 +1,8 @@
+.venv/
+**/.venv/
+data/raw/
+data/audio_native/
+data/*.db
+data/sentences.json
+data/gloss.json
+__pycache__/
