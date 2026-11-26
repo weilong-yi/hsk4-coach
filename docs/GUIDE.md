@@ -60,7 +60,7 @@ Sentences chosen so that about 97% of their words are ones you know, with a few 
 3. The text appears. Click any word you are unsure of to see its pinyin and meaning. HSK words you look up become flashcards. **Esc** closes the popup.
 4. **T** shows the English translation. **Enter** goes to the next sentence.
 
-The word popup also has **Open in Obsidian →**, which opens that word's note in your vault (see section 5).
+The word popup also has **Graph →** (see section 4) and **Open in Obsidian →**, which opens that word's note in your vault (see section 6).
 
 ### Speak (10 minutes)
 
@@ -90,11 +90,24 @@ You can click Home or Stats, reload, or close the tab. Your session is kept. Hom
 - **Reading check** on Home runs another timed read, to track reading speed over time.
 - For a text report of the last week: `.venv/bin/python tools/weekly.py` (add `--days 30` for a month).
 
-## 4. Audio
+## 4. Explore the graph
+
+**Graph** in the top bar shows how a word connects to others: its characters, the words that share them, each character's components, and characters with the same sound part.
+
+- **Find a word** by typing characters (学) or toneless pinyin (xuesheng, qing). Exact syllables come first.
+- **Colours show your progress**: aqua known, orange learning or in review, blue new. Hollow rings are characters that are not HSK words on their own; grey squares are components.
+- **Lines show the link**: solid "contains", dashed "sound part", dotted "meaning part".
+- **1 step / 2 steps** sets how far out to look. Two steps shows up to 60 nodes, keeping the most common words.
+- **Click any node or chip** to move to it. Hover a node for its pinyin and meaning.
+- The side panel lists every neighbour by type, plays the word (▶), and opens its note in Obsidian.
+
+During a session, the word popup in Listen & read has **Graph →**, which opens the graph in a new tab so your session keeps going.
+
+## 5. Audio
 
 Sentences with a native recording play that recording. Everything else is read by a neural voice (Yunxi) that pronounces erhua the Beijing way. The voice needs an internet connection the first time each sentence is played; after that it is saved and plays instantly. If the voice service is unreachable, the app falls back to your Mac's Tingting voice.
 
-## 5. Use the Obsidian graph
+## 6. Use the Obsidian graph
 
 The app mirrors HSK 1–4 into your Obsidian vault (the vault named in `app/config.json`, folder `HSK`). It updates automatically at the end of every block. To update by hand:
 
@@ -113,11 +126,11 @@ What you get:
 
 If a new local graph pane has no colours, copy the groups from the main graph's **Groups** panel: `tag:#state/known`, `tag:#state/learning OR tag:#state/review OR tag:#state/relearning`, `tag:#state/new`, `tag:#hsk/character`, `tag:#hsk/component`.
 
-## 6. Back up your progress
+## 7. Back up your progress
 
 Everything you have done is in `data/study.db`, and your recordings are in `data/recordings/`. Neither is in git, so neither is on GitHub. Copy both somewhere safe, for example iCloud Drive, now and then. If you lose `study.db`, you lose your flashcard history.
 
-## 7. When something goes wrong
+## 8. When something goes wrong
 
 | Problem | What to do |
 |---|---|

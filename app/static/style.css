@@ -215,3 +215,48 @@ th { font-weight: 600; color: var(--muted); font-size: 13px; }
 
 .panel .resume-note { color: var(--accent); font-weight: 600; }
 .popover .obsidian-link { display: inline-block; margin-top: 6px; color: var(--accent); font-size: 14px; }
+
+/* Graph page */
+.graph-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
+.graph-head h1 { margin: 0 8px 0 0; }
+.graph-search { position: relative; flex: 1 1 260px; }
+.graph-search input { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.graph-results { position: absolute; z-index: 10; left: 0; right: 0; top: calc(100% + 4px); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); max-height: 320px; overflow: auto; }
+.graph-result { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px 12px; border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.graph-result:hover, .graph-result:focus { background: var(--soft); }
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.segmented .seg { border: 0; background: var(--surface); color: var(--ink); padding: 7px 12px; font: inherit; cursor: pointer; }
+.segmented .seg.on { background: var(--accent); color: var(--accent-ink); }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--viz-ink2); margin: 4px 0 12px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.gdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.gdot.s1 { background: var(--s1); } .gdot.s2 { background: var(--s2); } .gdot.s3 { background: var(--s3); }
+.gdot.character { border: 2px solid var(--viz-ink2); width: 7px; height: 7px; }
+.gdot.component { background: var(--viz-ink2); border-radius: 2px; }
+.gline { display: inline-block; width: 22px; border-top: 2px solid var(--viz-axis); }
+.gline.sound { border-top-style: dashed; } .gline.meaning { border-top-style: dotted; }
+.graph-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .graph-layout { grid-template-columns: 1fr; } }
+.graph-figure { margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--viz-surface); }
+.gedge { stroke: var(--viz-axis); stroke-width: 1.5; }
+.gedge.sound { stroke-dasharray: 6 4; } .gedge.meaning { stroke-dasharray: 1.5 4; stroke-linecap: round; }
+.gnode { cursor: pointer; outline: none; }
+.gn { stroke: var(--viz-surface); stroke-width: 2; }
+.gn.word.s1 { fill: var(--s1); } .gn.word.s2 { fill: var(--s2); } .gn.word.s3 { fill: var(--s3); }
+.gn.char { fill: var(--viz-surface); stroke: var(--viz-ink2); stroke-width: 2.5; }
+.gn.comp { fill: var(--viz-ink2); }
+.gn.center { stroke: var(--viz-ink); stroke-width: 2.5; }
+.gnode:hover .gn, .gnode:focus .gn { stroke: var(--viz-ink); stroke-width: 3; }
+.ghit { fill: transparent; stroke: none; }
+.glabel { text-anchor: middle; font-size: 15px; fill: var(--viz-ink); paint-order: stroke; stroke: var(--viz-surface); stroke-width: 4px; stroke-linejoin: round; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+.glabel.center { font-size: 22px; font-weight: 600; }
+.graph-panel { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface); }
+.graph-panel .hanzi.xl { margin-right: 8px; }
+.graph-panel p { margin: 4px 0; }
+.graph-panel .py { text-align: left; }
+.graph-group h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; text-transform: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); text-decoration: none; font-size: 15px; }
+.chip:hover { background: var(--soft); }
+.graph-panel .obsidian-link { display: inline-block; margin-top: 6px; color: var(--accent); }
+.popover .graph-link { display: inline-block; margin: 6px 12px 0 0; color: var(--accent); font-size: 14px; }

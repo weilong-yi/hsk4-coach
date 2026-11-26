@@ -126,6 +126,7 @@ function listenItem(ctx, s) {
           h('button', { class: 'small', onclick: () => speak(word) }, '▶')),
         h('p', {}, info.en || 'No dictionary gloss.'),
         h('p', { class: 'muted' }, info.lvl ? `HSK ${info.lvl}` : 'Not in HSK 1-4', info.added ? ' · added to your cards' : ''),
+        info.lvl ? h('a', { class: 'graph-link', href: `#/graph/${encodeURIComponent(word)}`, target: '_blank', rel: 'noopener' }, 'Graph →') : null,
         ctx.obsidian && info.lvl ? h('a', { class: 'obsidian-link', href: obsidianUri(ctx.obsidian, word) }, 'Open in Obsidian →') : null);
       pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 340, r.left))}px`;
       pop.style.top = `${r.bottom + 8}px`;

@@ -254,6 +254,37 @@ def session(page):
             "released_after_next": released_after_next, "scripted_finals": finals, "scripted_target": zh, "scripted": scored}
 
 
+def graph_journey(page):
+    """Graph page: open by URL, search by pinyin, toggle depth, click a node to recenter. Returns failures."""
+    fails = []
+    page.goto(URL + "#/graph/" + "学")
+    expect(page.get_by_role("img", name="Graph of 学")).to_be_visible()
+    n1 = page.locator(".gnode").count()
+    shot(page, "29-graph-xue")
+    page.get_by_role("searchbox", name="Find a word").fill("qing")
+    expect(page.locator(".graph-result").first).to_be_visible()
+    page.locator(".graph-result").filter(has=page.locator(".hanzi", has_text=re.compile("^请$"))).click()
+    expect(page.get_by_role("img", name="Graph of 请")).to_be_visible()
+    page.get_by_role("button", name="2 steps").click()
+    expect(page.get_by_role("button", name="2 steps")).to_have_class(re.compile("on"))
+    n2 = page.locator(".gnode").count()
+    shot(page, "30-graph-qing-2-steps")
+    page.locator(".chip", has_text="情").first.click()
+    expect(page.get_by_role("img", name="Graph of 情")).to_be_visible()
+    page.emulate_media(color_scheme="dark")
+    page.wait_for_timeout(200)
+    shot(page, "31-graph-dark")
+    page.emulate_media(color_scheme="light")
+    labels = page.locator(".glabel").count()
+    if n1 < 10:
+        fails.append(f"graph of 学 drew only {n1} nodes")
+    if not 10 <= n2 <= 60:
+        fails.append(f"2-step graph of 请 drew {n2} nodes (expected 10-60)")
+    if labels != page.locator(".gnode").count():
+        fails.append("a graph node has no label")
+    return fails, {"xue_nodes": n1, "qing_2step_nodes": n2}
+
+
 def resume_journey(browser, page, db_path):
     """Leave a session three ways (nav to Home, reload, close the tab) and check it resumes: same session id,
     same block, timer continuing (block_ms never resets), running tally kept. Real-time timers so nothing expires."""
@@ -415,6 +446,9 @@ def main():
             page.goto(URL + "#/home")
             expect(page.get_by_role("heading", name="Today")).to_be_visible()
             shot(page, "25-home-after-session")
+            print("graph")
+            graph_fail, graph = graph_journey(page)
+            failures += graph_fail
             print("resume")
             resume_fail, resume = resume_journey(browser, page, db_path)
             failures += resume_fail
@@ -446,7 +480,7 @@ def main():
         failures += [e for e in errors if e not in bad_gateway]
         print(json.dumps({"native_audio_responses": dict(Counter(audio)), "tts_responses": dict(Counter(tts)), "card_tone_voices": dict(voices),
                           "session": {k: v for k, v in s.items() if k != "scripted"}, "scripted_score": s["scripted"]["score"],
-                          "resume": resume,
+                          "resume": resume, "graph": graph,
                           "db": summary}, ensure_ascii=False, indent=1))
         print(weekly.stdout)
     finally:

@@ -3,6 +3,7 @@ import { stopAudio } from './audio.js';
 import { placementScreen, readingScreen, tile } from './placement.js';
 import { sessionScreen } from './session.js';
 import { statsScreen } from './stats.js';
+import { graphScreen } from './graph.js';
 import { h, Scope, toast, pct } from './ui.js';
 
 async function homeScreen(root) {
@@ -33,7 +34,7 @@ async function homeScreen(root) {
     h('p', { class: 'muted' }, `Placement ${p.date.slice(0, 10)}: listening ${p.listen.correct}/${p.listen.n}, tones ${pct(p.tone.correct / p.tone.n)}, reading ${p.read.cpm || '–'} characters/min.`)));
 }
 
-const ROUTES = { home: homeScreen, placement: placementScreen, session: sessionScreen, stats: statsScreen, reading: readingScreen };
+const ROUTES = { home: homeScreen, placement: placementScreen, session: sessionScreen, stats: statsScreen, reading: readingScreen, graph: graphScreen };
 let scope = null;
 
 async function route() {

@@ -7,7 +7,7 @@ import argparse, json, mimetypes, urllib.parse, random, re, secrets, threading, 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import corpus, db, obsidian, placement, stats, study, tts
+from . import corpus, db, graph, obsidian, placement, stats, study, tts
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
@@ -22,6 +22,7 @@ class App:
         self.rec_dir = self.db_path.parent / "recordings"
         self.cfg = json.loads(Path(config_path).read_text())
         self.c = corpus.load()
+        self.graph = graph.Graph(self.c.words, graph.load_mmah())
         self.rng = random.Random()
         db.connect(self.db_path).close()
 
@@ -123,6 +124,17 @@ class App:
     def shadow(self, con, body):
         return study.save_shadow(con, self.c, self.rec_dir, body)
 
+    def graph_local(self, con, body):
+        depth = int(body.get("depth", 1))
+        if depth not in (1, 2):
+            raise ValueError("depth must be 1 or 2")
+        out = self.graph.local(body["node"], obsidian.card_states(self.db_path), depth)
+        return {**out, "obsidian": self.cfg.get("obsidian")}
+
+    def graph_search(self, con, body):
+        states = obsidian.card_states(self.db_path)
+        return {"results": [self.graph.node(n, states) for n in self.graph.search(str(body.get("q", "")))]}
+
     def stats(self, con, _):
         return stats.compute(con, self.cfg)
 
@@ -143,6 +155,8 @@ ROUTES = {
     ("POST", "/api/shadow/items"): App.shadow_items,
     ("POST", "/api/shadow"): App.shadow,
     ("GET", "/api/stats"): App.stats,
+    ("POST", "/api/graph"): App.graph_local,
+    ("POST", "/api/graph/search"): App.graph_search,
 }
 
 

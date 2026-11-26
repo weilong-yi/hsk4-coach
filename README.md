@@ -7,7 +7,8 @@ A local study app for passing the new-format HSK 4 (HSK 3.0, 2025 syllabus, 1,95
 - **Audio** from native Tatoeba recordings when available, otherwise a neural voice that pronounces Beijing erhua.
 - **Speaking scores** that measure whether you were understood, accept homophones and Beijing erhua, and never claim to judge tones.
 - **Progress**: stats page, weekly report, and the pace needed to reach 1,950 words by 1 June 2027.
-- **Obsidian graph**: every word, character and component as a linked note, coloured by what you know.
+- **Graph page**: any word's characters, components and sound family as an interactive graph, coloured by what you know.
+- **Obsidian graph**: the same graph as linked notes in your Obsidian vault.
 
 **To learn how to use it, read the [user guide](docs/GUIDE.md).**
 
@@ -42,7 +43,7 @@ Your study history lives in `data/study.db` and `data/recordings/`. Both stay on
 
 ## Obsidian graph
 
-Set your vault name in `app/config.json` (`obsidian.vault`, `obsidian.folder`). Usage is in the [user guide](docs/GUIDE.md#5-use-the-obsidian-graph).
+Set your vault name in `app/config.json` (`obsidian.vault`, `obsidian.folder`). Usage is in the [user guide](docs/GUIDE.md#6-use-the-obsidian-graph).
 
 
 `.venv/bin/python -m app.obsidian` mirrors HSK 1-4 into the Obsidian vault named in `app/config.json` (`obsidian.vault`, `obsidian.folder`): one note per word, character and shared component, with typed links in properties (`characters`, `components`, `sound_part`, `meaning_part`, `sound_family`, `in_words`), example sentences, card state as `state/...` tags, and a `HSK words.base` view. Anything under `## My notes` is yours and is never overwritten. The server re-exports after each session block, but only for the real `data/study.db`. The lookup popup has an "Open in Obsidian" link.

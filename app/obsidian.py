@@ -13,26 +13,10 @@ from collections import defaultdict
 from pathlib import Path
 
 from .corpus import load
+from .graph import load_mmah, relations, toned
 
 ROOT = Path(__file__).resolve().parent.parent
-MMAH = ROOT / "data" / "raw" / "makemeahanzi_dictionary.txt"
 MY_NOTES = "## My notes"
-IDC = re.compile(r"[⿰-⿿？]")
-TONE_MARKS = {"a": "āáǎà", "e": "ēéěè", "i": "īíǐì", "o": "ōóǒò", "u": "ūúǔù", "ü": "ǖǘǚǜ"}
-
-
-def toned(num):
-    """'xue2 sheng5' -> 'xuésheng'."""
-    out = []
-    for syl in num.replace("u:", "ü").replace("v", "ü").split():
-        m = re.fullmatch(r"([a-zü]+)([1-5])", syl.lower())
-        if not m or m.group(2) == "5":
-            out.append(syl.rstrip("5").lower())
-            continue
-        s, t = m.group(1), int(m.group(2)) - 1
-        v = "a" if "a" in s else "e" if "e" in s else "o" if "ou" in s else next((c for c in reversed(s) if c in TONE_MARKS), None)
-        out.append(s.replace(v, TONE_MARKS[v][t], 1) if v else s)
-    return "".join(out)
 
 
 def link(x):
@@ -56,27 +40,9 @@ def card_states(db_path):
 def build_notes(c, states, mmah):
     """name -> {"props": dict, "body": str}. Pure: same inputs give byte-identical notes."""
     words = c.words
-    chars = sorted({ch for w in words for ch in w})
-    comp_of, sound_of, meaning_of, uses = {}, {}, {}, defaultdict(set)
-    for ch in chars:
-        d = mmah.get(ch, {})
-        comps = sorted(set(IDC.sub("", d.get("decomposition", ""))) - {ch})
-        comp_of[ch] = comps
-        ety = d.get("etymology", {})
-        sound_of[ch], meaning_of[ch] = ety.get("phonetic"), ety.get("semantic")
-        for x in comps:
-            uses[x].add(ch)
-    shared = {x for x, s in uses.items() if len(s) >= 2}  # components worth a note of their own
-    noted = set(words) | set(chars) | shared
-    in_words = defaultdict(list)
-    for w in sorted(words, key=lambda w: (words[w]["lvl"], words[w]["rank"])):
-        if len(w) > 1:
-            for ch in dict.fromkeys(w):
-                in_words[ch].append(w)
-    family = defaultdict(list)
-    for ch in chars:
-        if sound_of[ch]:
-            family[sound_of[ch]].append(ch)
+    r = relations(words, mmah)
+    chars, comp_of, sound_of, meaning_of = r["chars"], r["comp_of"], r["sound_of"], r["meaning_of"]
+    uses, shared, noted, in_words, family = r["uses"], r["shared"], r["noted"], r["in_words"], r["family"]
     known = {w for w, s in states.items() if s["state"] == "known"}
 
     notes = {}
@@ -211,8 +177,7 @@ def vault_path(vault_name):
 
 
 def export(db_path, vault, folder_name, c=None):
-    mmah = {d["character"]: d for d in map(json.loads, MMAH.read_text(encoding="utf-8").splitlines())}
-    notes = build_notes(c or load(), card_states(db_path), mmah)
+    notes = build_notes(c or load(), card_states(db_path), load_mmah())
     folder = vault / folder_name
     changed = write_vault(notes, folder)
     write_base(folder)
