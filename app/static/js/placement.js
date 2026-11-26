@@ -1,5 +1,5 @@
 import { post, logEvent } from './api.js';
-import { playSentence, speak, nextVoice, voicesReady } from './audio.js';
+import { playSentence, speak, mandarinVoice, voicesReady } from './audio.js';
 import { pinyin } from './pinyin.js';
 import { h, step, choices, nextButton, kbd, elapsed, pct } from './ui.js';
 
@@ -96,7 +96,7 @@ async function tones(scope, root, sid, items) {
   for (const [i, it] of items.entries()) {
     await step(scope, (s, done) => {
       const t0 = performance.now();
-      const voice = nextVoice();
+      const voice = mandarinVoice();
       const rate = 0.75 + Math.random() * 0.2;
       let plays = 0;
       const play = () => { plays++; speak(it.w, { voice, rate }); };

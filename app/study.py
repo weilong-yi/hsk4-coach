@@ -3,6 +3,7 @@ import base64, io, re, wave, zlib
 from datetime import datetime, timedelta, timezone
 
 from fsrs import Card, Rating, Scheduler
+from pypinyin import Style, lazy_pinyin
 
 from . import db
 from .corpus import han
@@ -150,8 +151,14 @@ def shadow_items(con, c, cfg, session_id, rng):
 
 
 def match(target, transcript):
-    """Longest-common-subsequence alignment over Han characters: which target characters were heard."""
-    t, h = han(target), han(transcript)
+    """Which target characters the recognizer understood: LCS alignment over toned pinyin syllables.
+
+    Comparing syllables, not characters, counts a homophone (她 heard as 他, both ta1) as understood.
+    This says the speech was understood; it does not judge tones (data/exp_speech.md E1a).
+    """
+    chars = han(target)
+    syl = lambda s: lazy_pinyin(s, style=Style.TONE3, neutral_tone_with_five=True)
+    t, h = syl(chars), syl(han(transcript))
     n, m = len(t), len(h)
     lcs = [[0] * (m + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
@@ -167,7 +174,7 @@ def match(target, transcript):
         else:
             marks.append(False)
             i += 1
-    return {"chars": t, "marks": marks, "score": round(sum(marks) / n, 3) if n else None}
+    return {"chars": chars, "marks": marks, "score": round(sum(marks) / n, 3) if n else None}
 
 
 def save_shadow(con, c, rec_dir, p):

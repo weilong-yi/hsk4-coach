@@ -148,9 +148,9 @@ export async function statsScreen(root) {
       line(days.map(x => ({ label: x.label, y: x.d ? x.d.understood_rate : null, extra: x.d ? [`${x.d.listened} sentences`] : [] })), v => pct(v), 1),
       table(['Date', 'Sentences', 'Understood', 'Lookups'], active.map(d => [d.date, d.listened, pct(d.understood_rate), d.lookups]))),
 
-    figure('Shadowing match', 'characters of the target sentence found in the speech-recognition transcript',
+    figure('Shadowing: understood', 'share of the target sentence speech recognition understood, matched on toned pinyin (not a tone check)',
       line(days.map(x => ({ label: x.label, y: x.d ? x.d.shadow_score : null, extra: x.d ? [`${x.d.shadow_scored} of ${x.d.shadow_attempts} attempts scored`] : [] })), v => pct(v), 1),
-      table(['Date', 'Attempts', 'Scored', 'Mean match'], active.map(d => [d.date, d.shadow_attempts, d.shadow_scored, pct(d.shadow_score)]))),
+      table(['Date', 'Attempts', 'Scored', 'Mean understood'], active.map(d => [d.date, d.shadow_attempts, d.shadow_scored, pct(d.shadow_score)]))),
 
     figure('Reading speed', 'timed reads from placement and reading checks, characters per minute',
       st.reading.length > 1 ? line(st.reading.map(r => ({ label: r.date.slice(5), y: r.cpm, extra: [`comprehension ${pct(r.accuracy)}`] })), v => Math.round(v)) : h('p', { class: 'muted' }, st.reading.length ? `One timed read so far: ${st.reading[0].cpm} cpm. Use Reading check on Home to add more.` : 'No timed reads yet.'),

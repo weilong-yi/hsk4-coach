@@ -25,7 +25,7 @@ def report(s, days):
     out.append(f"**Pace** needed {w['needed_per_day']}/day for {w['days_left']} days to {w['target_date']}; "
                f"recent {w['recent_per_day']}/day" + (f", on track for {w['projected_date']}." if w["projected_date"] else "."))
     out.append("\n## Per day\n")
-    out.append("| Date | Cards min | Listen min | Speak min | Reviews | New | Sentences | Understood | Lookups | Shadow attempts | Shadow match |")
+    out.append("| Date | Cards min | Listen min | Speak min | Reviews | New | Sentences | Understood | Lookups | Shadow attempts | Shadow understood |")
     out.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for d in s["per_day"]:
         m = d["minutes"]

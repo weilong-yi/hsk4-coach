@@ -1,8 +1,8 @@
-// Native Tatoeba audio through /audio/<id>, else browser TTS rotating over the installed Mandarin voices.
+// Native Tatoeba audio through /audio/<id>, else browser TTS in one voice: Tingting.
+// data/exp_speech.md E2.1: Tingting's STT error matched native audio (1.4% vs 3.2%); the other macOS voices were 12.8-42%.
 
 let current = null;
 let utterance = null;
-let turn = 0;
 const failedNative = new Set();
 
 export const voicesReady = new Promise(resolve => {
@@ -19,9 +19,11 @@ export function mandarinVoices() {
   return mainland.length ? mainland : all.filter(v => /^zh/i.test(v.lang) && !/HK|yue/i.test(v.lang));
 }
 
-export function nextVoice() {
+const ELOQUENCE = /^(Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)\b/;
+
+export function mandarinVoice() {
   const vs = mandarinVoices();
-  return vs.length ? vs[turn++ % vs.length] : null;
+  return vs.find(v => /Tingting|婷婷/.test(v.name)) || vs.find(v => !ELOQUENCE.test(v.name)) || vs[0] || null;
 }
 
 export function stopAudio() {
@@ -35,7 +37,7 @@ export function stopAudio() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
 }
 
-export function speak(text, { rate = 0.9, pitch = 1, voice = nextVoice() } = {}) {
+export function speak(text, { rate = 0.9, pitch = 1, voice = mandarinVoice() } = {}) {
   return new Promise(resolve => {
     stopAudio();
     if (!('speechSynthesis' in window)) return resolve({ via: 'none', voice: null, status: 'unsupported' });
@@ -83,5 +85,5 @@ export async function playSentence(s, { slow = false, voice } = {}) {
       failedNative.add(s.audio);
     }
   }
-  return speak(s.zh, { rate: slow ? 0.6 : 0.9, voice: voice || nextVoice() });
+  return speak(s.zh, { rate: slow ? 0.6 : 0.9, voice: voice || mandarinVoice() });
 }

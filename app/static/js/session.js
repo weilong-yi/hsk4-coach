@@ -1,5 +1,5 @@
 import { get, post, logEvent } from './api.js';
-import { playSentence, speak, nextVoice, stopAudio, voicesReady } from './audio.js';
+import { playSentence, speak, mandarinVoice, stopAudio, voicesReady } from './audio.js';
 import { pinyin } from './pinyin.js';
 import { Attempt, errorMessage, blobToBase64 } from './speech.js';
 import { h, step, BlockTimer, kbd, nextButton, elapsed, pct, toast } from './ui.js';
@@ -8,7 +8,7 @@ import { tile } from './placement.js';
 const ABOUT = {
   cards: 'Listen to each word first and recall its meaning, then reveal and rate yourself. Due reviews come first, then new words.',
   listen: 'Hear each sentence before you see it. Mark whether you understood, then read it. Click any word for pinyin and meaning; HSK words you look up become cards.',
-  speak: 'Shadow sentences from today. Hear it, record yourself saying it, and compare. Recordings are saved for later tone analysis.',
+  speak: 'Shadow sentences from today. Hear it, record yourself saying it, and see how much speech recognition understood. It checks you were understood, not your tones. Recordings are saved.',
 };
 
 // Sentence as token blocks (hanzi over pinyin), punctuation kept between tokens.
@@ -42,7 +42,7 @@ async function cardsBlock(ctx) {
 function reviewCard(ctx, card) {
   return step(ctx.scope, (s, done) => {
     const t0 = performance.now();
-    const voice = nextVoice();
+    const voice = mandarinVoice();
     let plays = 0, revealMs = null, busy = false;
     const play = () => { plays++; speak(card.w, { voice, rate: 0.85 }); };
     const playExample = () => card.example && playSentence(card.example);
@@ -256,7 +256,7 @@ function shadowItem(ctx, s) {
       result.replaceChildren(
         saved.marks
           ? h('div', { class: 'scored' }, h('div', { class: 'chars' }, [...saved.chars].map((ch, i) => h('span', { class: saved.marks[i] ? 'hit' : 'miss' }, ch))),
-            h('div', { class: 'score' }, pct(saved.score), h('span', { class: 'muted' }, ' characters matched')))
+            h('div', { class: 'score' }, pct(saved.score), h('span', { class: 'muted' }, ' understood by speech recognition (not a tone check)')))
           : h('p', { class: 'warn' }, errorMessage(r.error)),
         h('div', { class: 'row' }, h('span', { class: 'muted' }, `Your recording (${saved.duration_s.toFixed(1)} s):`), h('audio', { controls: true, src: url })));
     }
@@ -333,7 +333,7 @@ export async function sessionScreen(root, scope) {
       tile('Cards', tally.cards, 'reviewed'),
       tile('Listening', tally.listened, `${pct(tally.listened ? tally.understood / tally.listened : null)} understood`),
       tile('Lookups', tally.lookups, 'words checked'),
-      tile('Shadowing', tally.attempts, scores.length ? `avg match ${pct(scores.reduce((a, b) => a + b, 0) / scores.length)}` : 'no transcripts scored')),
+      tile('Shadowing', tally.attempts, scores.length ? `avg understood ${pct(scores.reduce((a, b) => a + b, 0) / scores.length)}` : 'no transcripts scored')),
     h('div', { class: 'row end' }, h('a', { class: 'button', href: '#/stats' }, 'Stats'), h('a', { class: 'button primary', href: '#/home' }, 'Home'))));
 }
 
