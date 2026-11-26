@@ -8,7 +8,7 @@ Headless Chrome's speech recognition starts but never returns a transcript, so t
 only on its empty/error path. One extra attempt swaps in a scripted recognizer that emits Safari-style cumulative
 results, to check the merge rule and the scored view. Real-mic transcription is not verified here.
 """
-import json, socket, subprocess, sys, tempfile, time, wave
+import json, re, socket, subprocess, sys, tempfile, time, wave
 from collections import Counter
 from pathlib import Path
 
@@ -220,7 +220,8 @@ def session(page):
     shot(page, "19-speak-recording")
     with page.expect_response("**/api/shadow"):
         page.keyboard.press("r")
-    expect(page.locator(".result .warn")).to_be_visible()
+    # Headless Chrome's recognizer usually returns nothing, but sometimes transcribes noise from the fake mic tone.
+    expect(page.locator(".result .warn, .scored").first).to_be_visible()
     shot(page, "20-speak-result-headless-recognizer")
     released_after_attempt = mics_released(page)
 
@@ -251,6 +252,74 @@ def session(page):
     shot(page, "23-session-complete")
     return {"cards": n, "sentences": k, "released_after_attempt": released_after_attempt,
             "released_after_next": released_after_next, "scripted_finals": finals, "scripted_target": zh, "scripted": scored}
+
+
+def resume_journey(browser, page, db_path):
+    """Leave a session three ways (nav to Home, reload, close the tab) and check it resumes: same session id,
+    same block, timer continuing (block_ms never resets), running tally kept. Real-time timers so nothing expires."""
+    url = f"http://localhost:{PORT}/?timescale=1"
+    session_link = lambda p: p.locator("a.button.primary[href='#/session']")
+
+    def answer(p, n):
+        for _ in range(n):
+            expect(p.locator(".listen.audio")).to_be_visible(timeout=20000)
+            p.keyboard.press("y")
+            expect(p.locator(".listen.text")).to_be_visible()
+            p.keyboard.press("Enter")
+            p.wait_for_timeout(300)
+
+    page.goto(url + "#/home")
+    expect(session_link(page)).to_have_text(re.compile(r"Start \d+-minute session"))
+    session_link(page).click()
+    expect(page.get_by_role("heading", name="Cards · 8 minutes")).to_be_visible()
+    page.keyboard.press("Enter")
+    page.get_by_role("button", name="Skip block →").click()
+    expect(page.get_by_role("heading", name="Listen & read · 12 minutes")).to_be_visible()
+    page.keyboard.press("Enter")
+    answer(page, 2)
+    page.wait_for_timeout(1500)
+
+    page.locator("a[data-route=home]").click()  # 1. click away
+    expect(session_link(page)).to_have_text("Resume session · Listen & read")
+    shot(page, "26-home-resume-offered")
+    session_link(page).click()
+    expect(page.get_by_text("Resuming where you left off")).to_be_visible()
+    shot(page, "27-resume-note")
+    page.keyboard.press("Enter")
+    answer(page, 1)
+
+    page.reload()  # 2. reload
+    expect(page.get_by_text("Resuming where you left off")).to_be_visible()
+    page.close()  # 3. close the tab, open a new one
+    ctx2 = browser.new_context(viewport={"width": 1100, "height": 900}, permissions=["microphone"])
+    p2 = ctx2.new_page()
+    p2.goto(url + "#/session")
+    expect(p2.get_by_text("Resuming where you left off")).to_be_visible()
+    p2.keyboard.press("Enter")
+    answer(p2, 1)
+    timer_text = p2.locator(".timer").inner_text()
+    p2.get_by_role("button", name="Skip block →").click()
+    expect(p2.get_by_role("heading", name="Speak · 10 minutes")).to_be_visible()
+    p2.keyboard.press("Enter")
+    p2.get_by_role("button", name="Skip block →").click()
+    expect(p2.get_by_role("heading", name="Session complete")).to_be_visible()
+    shot(p2, "28-resumed-session-complete")
+    listening_tile = p2.locator(".tile", has_text="Listening").inner_text()
+
+    con = __import__("sqlite3").connect(db_path)
+    sid = con.execute("SELECT session_id FROM events WHERE session_id LIKE 'S%' ORDER BY id DESC LIMIT 1").fetchone()[0]
+    listens = [json.loads(r[0])["block_ms"] for r in con.execute(
+        "SELECT result_json FROM events WHERE session_id=? AND activity='listen' AND item!='block_end' ORDER BY id", (sid,))]
+    fails = []
+    if len(listens) != 4:
+        fails.append(f"resume: expected 4 listen answers in one session {sid}, got {len(listens)}")
+    # The 1.5 s idle before clicking away must carry into the resumed timer: a reset would restart near 0.
+    if len(listens) == 4 and (listens != sorted(listens) or listens[2] < listens[1] + 1400):
+        fails.append(f"resume: listen block_ms reset or lost the time before leaving: {listens}")
+    if "4" not in listening_tile.split():
+        fails.append(f"resume: session summary lost the earlier answers: {listening_tile!r}")
+    ctx2.close()
+    return fails, {"session": sid, "listen_block_ms": listens, "timer_at_end": timer_text, "listening_tile": listening_tile}
 
 
 def check_db(db_path, reading):
@@ -314,7 +383,7 @@ def main():
     db_path = tmp / "study.db"
     server = subprocess.Popen([sys.executable, "-m", "app.server", "--db", str(db_path), "--port", str(PORT)],
                               cwd=ROOT, stdout=open(tmp / "server.log", "w"), stderr=subprocess.STDOUT)
-    failures, errors, audio = [], [], []
+    failures, errors, audio, tts = [], [], [], []
     try:
         wait_port(PORT)
         with sync_playwright() as p:
@@ -326,6 +395,7 @@ def main():
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
             page.on("console", lambda m: errors.append(f"console.{m.type}: {m.text}") if m.type == "error" else None)
             page.on("response", lambda r: audio.append(r.status) if "/audio/" in r.url else None)
+            page.on("response", lambda r: tts.append(r.status) if "/tts?" in r.url else None)
             print("placement")
             _, reading = placement(page)
             print("session")
@@ -345,6 +415,9 @@ def main():
             page.goto(URL + "#/home")
             expect(page.get_by_role("heading", name="Today")).to_be_visible()
             shot(page, "25-home-after-session")
+            print("resume")
+            resume_fail, resume = resume_journey(browser, page, db_path)
+            failures += resume_fail
             browser.close()
         if not s["released_after_attempt"]:
             failures.append("mic tracks still live after an attempt finished")
@@ -360,12 +433,20 @@ def main():
                                 capture_output=True, text=True, cwd=ROOT)
         if weekly.returncode or "## Per day" not in weekly.stdout:
             failures.append(f"weekly.py failed: {weekly.stderr[-500:]}")
+        if not tts or tts.count(200) < 0.9 * len(tts):
+            failures.append(f"server TTS not used or failing: {dict(Counter(tts))}")
+        voices = Counter(json.loads(r[0]).get("voice") for r in __import__("sqlite3").connect(db_path).execute(
+            "SELECT result_json FROM events WHERE activity IN ('card','placement_tone') AND item!='block_end'"))
+        # Every logged source must be the server voice; None means the item was answered before audio started.
+        if set(voices) - {"server-tts", None} or voices.get("server-tts", 0) < 20:
+            failures.append(f"card/tone audio not from server TTS: {dict(voices)}")
         bad_gateway = [e for e in errors if "status of 502" in e]
         if len(bad_gateway) > audio.count(502):
             failures.append("502 responses outside the native-audio proxy")
         failures += [e for e in errors if e not in bad_gateway]
-        print(json.dumps({"native_audio_responses": dict(Counter(audio)),
+        print(json.dumps({"native_audio_responses": dict(Counter(audio)), "tts_responses": dict(Counter(tts)), "card_tone_voices": dict(voices),
                           "session": {k: v for k, v in s.items() if k != "scripted"}, "scripted_score": s["scripted"]["score"],
+                          "resume": resume,
                           "db": summary}, ensure_ascii=False, indent=1))
         print(weekly.stdout)
     finally:

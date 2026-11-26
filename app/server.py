@@ -3,11 +3,11 @@
     .venv/bin/python -m app.server            # http://localhost:8766
     .venv/bin/python -m app.server --db /tmp/x.db --port 8767
 """
-import argparse, json, mimetypes, random, re, secrets, threading, time, urllib.error, urllib.request
+import argparse, json, mimetypes, urllib.parse, random, re, secrets, threading, time, urllib.error, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import corpus, db, placement, stats, study
+from . import corpus, db, placement, stats, study, tts
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
@@ -35,11 +35,14 @@ class App:
 
     def state(self, con, _):
         return {"placement": db.get_profile(con, "placement"), "config": self.cfg,
-                "queue": study.queue_counts(con, self.cfg), "known": len(study.known_set(con))}
+                "queue": study.queue_counts(con, self.cfg), "known": len(study.known_set(con)),
+                "resume": study.resume_state(con, self.cfg)}
 
     def placement_start(self, con, _):
         items = placement.build(self.c, self.rng)
         prefetch(it["audio"] for it in items["listen"])
+        for rate in (-20, -10, 0):  # TONE_RATES in app/static/js/placement.js
+            tts.prefetch((it["w"] for it in items["tone"]), self.cfg["tts_voice"], rate)
         return {"session_id": self.new_session("P"), **items}
 
     def placement_reading(self, con, body):
@@ -53,7 +56,10 @@ class App:
         return {"session_id": self.new_session("R"), **placement.reading(self.c, study.known_set(con), self.rng)}
 
     def session_start(self, con, _):
-        return {"session_id": self.new_session("S"), "blocks": self.cfg["blocks"], "queue": study.queue_counts(con, self.cfg)}
+        """Resume today's unfinished session if there is one, else start a new one."""
+        resume = study.resume_state(con, self.cfg)
+        sid = resume["session_id"] if resume else self.new_session("S")
+        return {"session_id": sid, "blocks": self.cfg["blocks"], "queue": study.queue_counts(con, self.cfg), "resume": resume}
 
     def event(self, con, body):
         if body["activity"] not in CLIENT_ACTIVITIES:
@@ -63,7 +69,12 @@ class App:
         return {"ok": True}
 
     def cards_next(self, con, body):
-        return {"card": study.next_card(con, self.c, self.cfg, body.get("exclude"))}
+        card = study.next_card(con, self.c, self.cfg, body.get("exclude"))
+        if card:
+            tts.prefetch([card["w"]], self.cfg["tts_voice"], study.TTS_RATE["word"])
+            if card.get("example") and not card["example"].get("audio"):
+                tts.prefetch([card["example"]["zh"]], self.cfg["tts_voice"], study.TTS_RATE["sentence"])
+        return {"card": card}
 
     def cards_review(self, con, body):
         if body["rating"] not in study.RATINGS:
@@ -79,13 +90,16 @@ class App:
     def bundle(self, con, _):
         sents = study.listen_bundle(con, self.c, self.cfg, self.rng)
         prefetch(s["audio"] for s in sents)
+        tts.prefetch((s["zh"] for s in sents if not s["audio"]), self.cfg["tts_voice"], study.TTS_RATE["sentence"])
         return {"sentences": sents}
 
     def lookup(self, con, body):
         return study.lookup(con, self.c, body["session_id"], body["word"], body.get("ms"), body.get("extra", {}))
 
     def shadow_items(self, con, body):
-        return {"sentences": study.shadow_items(con, self.c, self.cfg, body["session_id"], self.rng)}
+        sents = study.shadow_items(con, self.c, self.cfg, body["session_id"], self.rng)
+        tts.prefetch((s["zh"] for s in sents if not s["audio"]), self.cfg["tts_voice"], study.TTS_RATE["sentence"])
+        return {"sentences": sents}
 
     def shadow(self, con, body):
         return study.save_shadow(con, self.c, self.rec_dir, body)
@@ -203,6 +217,15 @@ def make_handler(app):
             path = self.path.split("?")[0]
             if path.startswith("/api/"):
                 return self.api("GET")
+            if path == "/tts":
+                q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                try:
+                    text, rate = tts.parse(q.get("text", [""])[0], q.get("rate", ["0"])[0])
+                    return self.send(200, tts.synth(text, app.cfg["tts_voice"], rate).read_bytes(), "audio/mpeg")
+                except ValueError as e:
+                    return self.send_json(400, {"error": str(e)})
+                except Exception as e:
+                    return self.send_json(502, {"error": f"tts unavailable: {type(e).__name__}: {e}"})
             m = re.fullmatch(r"/audio/(\d+)", path)
             if m:
                 try:

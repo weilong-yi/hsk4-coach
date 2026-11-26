@@ -26,4 +26,5 @@ The maintained source for verifying what a learner can do in HSK 4 Coach. Read t
 - [Placement test](./placement.md): vocabulary yes/no with made-up words, spot check, listening, tones, timed reading, profile.
 - [Daily session: cards and listen & read](./daily-session.md): FSRS cards, audio-first sentences, word lookup.
 - [Speak block (shadowing)](./speaking.md): record, recognizer transcript, WAV upload, mic release.
+- [Resume a session](./resume.md): leave by nav, reload or closed tab; same session, block, timer and tally on return.
 - [Stats and weekly report](./stats.md): `#/stats` page and `tools/weekly.py`.

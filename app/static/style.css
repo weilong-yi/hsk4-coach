@@ -212,3 +212,5 @@ th { font-weight: 600; color: var(--muted); font-size: 13px; }
   .level { grid-template-columns: 50px 1fr 90px; }
   .hanzi.xl { font-size: 56px; }
 }
+
+.panel .resume-note { color: var(--accent); font-weight: 600; }

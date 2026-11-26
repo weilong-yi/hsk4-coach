@@ -1,5 +1,5 @@
 import { get, post, logEvent } from './api.js';
-import { playSentence, speak, mandarinVoice, stopAudio, voicesReady } from './audio.js';
+import { playSentence, speak, mandarinVoice, playingSource, stopAudio, voicesReady } from './audio.js';
 import { pinyin } from './pinyin.js';
 import { Attempt, errorMessage, blobToBase64 } from './speech.js';
 import { h, step, BlockTimer, kbd, nextButton, elapsed, pct, toast } from './ui.js';
@@ -51,7 +51,7 @@ function reviewCard(ctx, card) {
       busy = true;
       await post('/api/cards/review', {
         session_id: ctx.sid, word: card.w, rating: r, ms: elapsed(t0),
-        extra: { ...ctx.extra(), reveal_ms: revealMs, plays, voice: voice && voice.name, example_id: card.example && card.example.id },
+        extra: { ...ctx.extra(), reveal_ms: revealMs, plays, voice: playingSource(), example_id: card.example && card.example.id },
       });
       done();
     };
@@ -135,7 +135,7 @@ function listenItem(ctx, s) {
       marked = true;
       ctx.tally.understood += understood;
       logEvent(ctx.sid, 'listen', s.id, {
-        ...ctx.extra(), understood, plays, slow_plays: slowPlays, audio: via && via.via, voice: via && via.voice,
+        ...ctx.extra(), understood, plays, slow_plays: slowPlays, audio: via && via.via, voice: (via && via.voice) || playingSource(),
         native_available: !!s.audio, lvl: s.lvl, unknown: Object.keys(s.marks).filter(t => s.marks[t] === 'new'),
       }, elapsed(t0));
       shownAt = performance.now();
@@ -235,7 +235,7 @@ function shadowItem(ctx, s) {
       const saved = await post('/api/shadow', {
         session_id: ctx.sid, sentence_id: s.id, attempt: n, transcript: r.transcript, error: r.error, ms: elapsed(a.tStart),
         wav_b64: await blobToBase64(r.blob),
-        extra: { ...ctx.extra(), rec_ms: r.recMs, model_plays: modelPlays, model_audio: via && via.via, model_voice: via && via.voice },
+        extra: { ...ctx.extra(), rec_ms: r.recMs, model_plays: modelPlays, model_audio: via && via.via, model_voice: (via && via.voice) || playingSource() },
       });
       ctx.tally.attempts++;
       if (saved.score != null) ctx.tally.scores.push(saved.score);
@@ -287,6 +287,7 @@ function finished(ctx, message) {
 }
 
 const BLOCKS = { cards: cardsBlock, listen: listenBlock, speak: speakBlock };
+const fmtMs = ms => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 
 export async function sessionScreen(root, scope) {
   await voicesReady;
@@ -297,16 +298,22 @@ export async function sessionScreen(root, scope) {
     return;
   }
   const s = await post('/api/session/start');
-  const tally = { cards: 0, listened: 0, understood: 0, lookups: 0, attempts: 0, scores: [] };
+  // Resuming continues the same session id, block and timer; the server rebuilds all of it from the event log.
+  const tally = s.resume ? s.resume.tally : { cards: 0, listened: 0, understood: 0, lookups: 0, attempts: 0, scores: [] };
+  const first = s.resume ? s.resume.block : 0;
   const t0 = performance.now();
   for (const [i, block] of s.blocks.entries()) {
+    if (i < first) continue;
+    const usedMs = i === first && s.resume ? s.resume.used_ms : 0;
+    const left = Math.max(0, block.minutes * 60000 - usedMs);
     await step(scope, (st, done) => {
       root.replaceChildren(h('section', { class: 'panel intro' },
         steps(s.blocks, i),
         h('h1', {}, `${block.title} · ${block.minutes} minutes`),
+        usedMs ? h('p', { class: 'resume-note' }, `Resuming where you left off: ${fmtMs(left)} left in this block.`) : null,
         h('p', {}, ABOUT[block.id]),
-        i === 0 ? h('p', { class: 'muted' }, `${s.queue.due} reviews due, ${s.queue.new} new words today.`) : null,
-        nextButton(st, `Start ${block.title.toLowerCase()}`, () => done())));
+        i === 0 && !usedMs ? h('p', { class: 'muted' }, `${s.queue.due} reviews due, ${s.queue.new} new words today.`) : null,
+        nextButton(st, `${usedMs ? 'Resume' : 'Start'} ${block.title.toLowerCase()}`, () => done())));
     });
     const bs = scope.child();
     const timerEl = h('div', { class: 'timer' });
@@ -317,7 +324,7 @@ export async function sessionScreen(root, scope) {
       h('div', { class: 'session-head' }, steps(s.blocks, i), timerEl,
         h('button', { class: 'link', onclick: () => skip() }, 'Skip block →')),
       body));
-    const timer = new BlockTimer(block.minutes, timerEl, bs);
+    const timer = new BlockTimer(block.minutes, timerEl, bs, usedMs);
     const ctx = { sid: s.session_id, timer, body, scope: bs, tally, extra: () => ({ block: block.id, block_ms: timer.ms }) };
     let reason = 'leave';
     bs.defer(() => post('/api/block_end', { session_id: s.session_id, block: block.id, block_ms: timer.ms, reason }));

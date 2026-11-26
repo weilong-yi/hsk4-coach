@@ -8,3 +8,5 @@ data/gloss.json
 __pycache__/
 data/recordings/
 verify-runs/
+data/tts_cache/
+tools/exp_erhua/cache/

@@ -69,9 +69,9 @@ export const clock = () => performance.now() * TIMESCALE;
 export const elapsed = t0 => Math.round(performance.now() - t0);
 
 export class BlockTimer {
-  constructor(minutes, el, scope) {
+  constructor(minutes, el, scope, usedMs = 0) {
     this.total = minutes * 60000;
-    this.t0 = clock();
+    this.t0 = clock() - usedMs;  // a resumed block continues from the time it had used
     this.el = el;
     scope.interval(() => this.render(), 250);
     this.render();

@@ -1,5 +1,5 @@
 import { post, logEvent } from './api.js';
-import { playSentence, speak, mandarinVoice, voicesReady } from './audio.js';
+import { playSentence, speak, mandarinVoice, playingSource, voicesReady } from './audio.js';
 import { pinyin } from './pinyin.js';
 import { h, step, choices, nextButton, kbd, elapsed, pct } from './ui.js';
 
@@ -82,7 +82,7 @@ async function listen(scope, root, sid, items) {
         h('p', { class: 'prompt' }, 'Listen (no text) and pick the meaning.'),
         h('div', { class: 'row center' }, h('button', { class: 'play', onclick: play }, '▶ Play again ', kbd('Space'))),
         choices(s, it.options, it.answer, (choice, correct) => {
-          logEvent(sid, 'placement_listen', it.id, { lvl: it.lvl, choice, correct, plays, audio: via && via.via, voice: via && via.voice, native_available: !!it.audio }, elapsed(t0));
+          logEvent(sid, 'placement_listen', it.id, { lvl: it.lvl, choice, correct, plays, audio: via && via.via, voice: (via && via.voice) || playingSource(), native_available: !!it.audio }, elapsed(t0));
           reveal.hidden = false;
           next.hidden = false;
         }),
@@ -92,12 +92,14 @@ async function listen(scope, root, sid, items) {
   }
 }
 
+const TONE_RATES = [0.8, 0.9, 1.0];  // -20 / -10 / 0 percent; app/server.py placement_start prefetches these
+
 async function tones(scope, root, sid, items) {
   for (const [i, it] of items.entries()) {
     await step(scope, (s, done) => {
       const t0 = performance.now();
       const voice = mandarinVoice();
-      const rate = 0.75 + Math.random() * 0.2;
+      const rate = TONE_RATES[i % TONE_RATES.length];  // varied speeds, all pre-synthesised by the server
       let plays = 0;
       const play = () => { plays++; speak(it.w, { voice, rate }); };
       const picked = [];
@@ -112,7 +114,7 @@ async function tones(scope, root, sid, items) {
         rows[k].querySelectorAll('button').forEach(b => b.classList.toggle('sel', Number(b.dataset.tone) === tone));
         if (picked.length < 2) return;
         const correct = picked.map((t, j) => t === it.tones[j]);
-        logEvent(sid, 'placement_tone', it.w, { answer: picked, expected: it.tones, correct, plays, voice: voice && voice.name, rate: Number(rate.toFixed(2)) }, elapsed(t0));
+        logEvent(sid, 'placement_tone', it.w, { answer: picked, expected: it.tones, correct, plays, voice: playingSource(), rate: Number(rate.toFixed(2)) }, elapsed(t0));
         rows.forEach((r, j) => r.classList.add(correct[j] ? 'right' : 'wrong'));
         feedback.replaceChildren(h('div', { class: 'hanzi md' }, it.w), pinyin(it.num, 'py lg'),
           h('p', {}, correct.every(Boolean) ? 'Both right.' : `You heard ${picked.join('-')}; it is ${it.tones.join('-')}.`));

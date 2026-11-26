@@ -1,8 +1,20 @@
 {
   "blocks": [
-    {"id": "cards", "title": "Cards", "minutes": 8},
-    {"id": "listen", "title": "Listen & read", "minutes": 12},
-    {"id": "speak", "title": "Speak", "minutes": 10}
+    {
+      "id": "cards",
+      "title": "Cards",
+      "minutes": 8
+    },
+    {
+      "id": "listen",
+      "title": "Listen & read",
+      "minutes": 12
+    },
+    {
+      "id": "speak",
+      "title": "Speak",
+      "minutes": 10
+    }
   ],
   "new_cards_per_day": 8,
   "learn_ahead_min": 20,
@@ -10,5 +22,6 @@
   "bundle_sentences": 30,
   "shadow_sentences": 6,
   "target_words": 1950,
-  "target_date": "2027-06-01"
+  "target_date": "2027-06-01",
+  "tts_voice": "zh-CN-YunxiNeural"
 }

@@ -31,5 +31,6 @@ Preconditions:
 ## Gotchas
 
 - With timescale 30, the cards block can run out of due cards before its timer, so `13-cards-time-up` may not appear. That is expected.
+- Audio goes through the server's `/tts` (neural voice, cached in `data/tts_cache/`, needs network on first synthesis). Card events log `voice: server-tts`; an instant scripted answer logs null.
 - A looked-up word that was marked known moves from known to cards on purpose.
 - The home button's minute count and the block titles follow `app/config.json`; update the headings above if the split changes.

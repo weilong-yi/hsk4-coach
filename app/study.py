@@ -3,6 +3,7 @@ import base64, io, re, wave, zlib
 from datetime import datetime, timedelta, timezone
 
 from fsrs import Card, Rating, Scheduler
+import jieba
 from pypinyin import Style, lazy_pinyin
 
 from . import db
@@ -141,13 +142,72 @@ def lookup(con, c, session_id, word, ms, extra):
     return {**info, "added": added}
 
 
+TTS_RATE = {"word": -15, "sentence": -10, "slow": -40}  # percent, shared with app/static/js/audio.js
+DONE_REASONS = {"time", "done", "skip"}
+
+
+def resume_state(con, cfg, max_age_h=12):
+    """The latest daily session, if it is under max_age_h old and has a block left: which block, its time used,
+    and the session's running tally. Derived from the event log only, so it survives reloads and closed tabs."""
+    row = con.execute("SELECT session_id, MAX(ts) AS ts FROM events WHERE session_id LIKE 'S%' "
+                      "GROUP BY session_id ORDER BY MAX(ts) DESC LIMIT 1").fetchone()
+    if not row or datetime.now(timezone.utc) - datetime.fromisoformat(row["ts"]) > timedelta(hours=max_age_h):
+        return None
+    evs = db.events(con, row["session_id"])
+    used, done = {}, set()
+    for e in evs:
+        b = e["result"].get("block")
+        if b is None:
+            continue
+        used[b] = max(used.get(b, 0), e["result"].get("block_ms") or 0)
+        if e["item"] == "block_end" and e["result"].get("reason") in DONE_REASONS:
+            done.add(b)
+    for i, b in enumerate(cfg["blocks"]):
+        if b["id"] not in done and used.get(b["id"], 0) < b["minutes"] * 60000:
+            return {"session_id": row["session_id"], "block": i, "used_ms": used.get(b["id"], 0), "tally": session_tally(evs)}
+    return None
+
+
+def session_tally(evs):
+    real = [e for e in evs if e["item"] != "block_end"]
+    of = lambda a: [e["result"] for e in real if e["activity"] == a]
+    return {"cards": len(of("card")), "listened": len(of("listen")), "understood": sum(1 for r in of("listen") if r.get("understood")),
+            "lookups": len(of("read_lookup")), "attempts": len(of("shadow")),
+            "scores": [r["score"] for r in of("shadow") if r.get("score") is not None]}
+
+
 def shadow_items(con, c, cfg, session_id, rng):
+    """Today's listened sentences to shadow, minus any already shadowed in this session (so a resumed block continues)."""
     seen = list(dict.fromkeys(e["item"] for e in db.events(con, session_id, "listen") if e["item"] != "block_end"))
+    done = {int(e["item"]) for e in db.events(con, session_id, "shadow") if e["item"] != "block_end"}
     pool = [c.by_id[int(i)] for i in seen if int(i) in c.by_id]
     if len(pool) < cfg["shadow_sentences"]:
         pool += [c.by_id[s["id"]] for s in listen_bundle(con, c, cfg, rng, exclude={s["id"] for s in pool})]
     pool.sort(key=lambda s: (s["audio"] is None, abs(len(han(s["zh"])) - 10)))
-    return [sentence_payload(c, s) for s in pool[:cfg["shadow_sentences"]]]
+    return [sentence_payload(c, s) for s in pool[:cfg["shadow_sentences"]] if s["id"] not in done]
+
+
+ERHUA_PLACE = {"这里": "这儿", "那里": "那儿", "哪里": "哪儿"}  # Beijing speech says 这儿 where the text has 这里
+R = "r"  # an erhua 儿 suffix: part of the previous syllable, never a syllable of its own
+
+
+def beijing_syllables(chars):
+    """One token per character: toned pinyin, except an erhua 儿 becomes R and 这里/那里/哪里's 里 becomes R.
+
+    Words where 儿 is a real syllable (儿子, 女儿, 儿童) keep er2. So 哪里 and 哪儿 align as na3 R, and an
+    extra 儿 a Beijing speaker adds (一点 -> 一点儿) is an extra R in the transcript that the alignment skips.
+    """
+    out = []
+    for w in jieba.lcut(chars):
+        syl = lazy_pinyin(w, style=Style.TONE3, neutral_tone_with_five=True)
+        if w in ERHUA_PLACE:
+            syl[-1] = R
+        elif len(w) > 1 and w.endswith("儿") and w not in ("女儿", "幼儿", "婴儿", "健儿"):
+            syl[-1] = R
+        elif w == "儿" and out:
+            syl = [R]
+        out += syl
+    return out
 
 
 def match(target, transcript):
@@ -157,8 +217,7 @@ def match(target, transcript):
     This says the speech was understood; it does not judge tones (data/exp_speech.md E1a).
     """
     chars = han(target)
-    syl = lambda s: lazy_pinyin(s, style=Style.TONE3, neutral_tone_with_five=True)
-    t, h = syl(chars), syl(han(transcript))
+    t, h = beijing_syllables(chars), beijing_syllables(han(transcript))
     n, m = len(t), len(h)
     lcs = [[0] * (m + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
@@ -174,6 +233,7 @@ def match(target, transcript):
         else:
             marks.append(False)
             i += 1
+    marks = [m or t[i] == R for i, m in enumerate(marks)]  # recognizers often drop a spoken 儿; never count it missed
     return {"chars": chars, "marks": marks, "score": round(sum(marks) / n, 3) if n else None}
 
 

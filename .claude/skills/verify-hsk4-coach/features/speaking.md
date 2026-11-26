@@ -27,7 +27,8 @@ Preconditions:
 
 ## Gotchas
 
-- All TTS uses the Tingting voice (`mandarinVoice()` in `app/static/js/audio.js`). `events.result_json` `$.voice` should read `Tingting` for card and placement_tone events.
+- Model audio is native Tatoeba when available, else server neural TTS (`/tts`, `tts_voice` in `app/config.json`). `$.voice`/`$.model_voice` log what actually started playing: `server-tts`, `tatoeba:<id>`, `browser:<voice>` (fallback), or null if answered before audio started.
+- Scoring treats erhua as Beijing speech: 这儿/这里 align, an added 儿 is free, and a target erhua 儿 is never counted missed (`beijing_syllables` in `app/study.py`).
 - Real transcription is unverified in headless Chrome. Screenshot `21-speak-scored-scripted-recognizer` proves the scoring UI, not the recognizer.
 - The app must be on `http://localhost`; a `file://` page gets no mic.
 - Pitch-based tone feedback is not in the app yet (see `data/exp_speech.md`); do not look for it.

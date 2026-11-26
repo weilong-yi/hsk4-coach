@@ -27,7 +27,9 @@ async function homeScreen(root) {
     h('div', { class: 'row end' },
       h('a', { class: 'button', href: '#/reading' }, 'Reading check'),
       h('a', { class: 'button', href: '#/placement' }, 'Retake placement'),
-      h('a', { class: 'button primary', href: '#/session' }, `Start ${st.config.blocks.reduce((a, b) => a + b.minutes, 0)}-minute session`)),
+      h('a', { class: 'button primary', href: '#/session' }, st.resume
+        ? `Resume session · ${st.config.blocks[st.resume.block].title}`
+        : `Start ${st.config.blocks.reduce((a, b) => a + b.minutes, 0)}-minute session`)),
     h('p', { class: 'muted' }, `Placement ${p.date.slice(0, 10)}: listening ${p.listen.correct}/${p.listen.n}, tones ${pct(p.tone.correct / p.tone.n)}, reading ${p.read.cpm || '–'} characters/min.`)));
 }
 
