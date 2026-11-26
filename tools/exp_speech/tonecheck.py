@@ -19,12 +19,12 @@ STEP = 0.01
 POINTS = 5
 
 # Chao-scale templates, 5 points across the voiced part of the syllable; a tone may have several shapes
-# and matches its closest one. Final syllables sit lower (final lowering), T2 may dip before it rises,
-# and T3 may end without the rise.
+# and matches its closest one. Final syllables may sit lower (final lowering, which not every speaker
+# does), T2 may dip before it rises, and T3 may end without the rise.
 TEMPLATES = {
 	True: {  # utterance-final syllable
-		1: [[4, 4, 4, 4, 4]],
-		2: [[2.5, 2.3, 2.7, 3.5, 4.3], [2.8, 2.2, 2.1, 2.8, 3.8]],
+		1: [[4, 4, 4, 4, 4], [5, 5, 5, 5, 5]],
+		2: [[2.5, 2.3, 2.7, 3.5, 4.3], [2.8, 2.2, 2.1, 2.8, 3.8], [3, 2.8, 3.2, 4, 5]],
 		3: [[2.5, 1.5, 1, 1.5, 3], [2.3, 1.6, 1.1, 1, 1]],
 		4: [[5, 4.5, 3.5, 2.3, 1]],
 	},
