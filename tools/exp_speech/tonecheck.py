@@ -36,7 +36,8 @@ TEMPLATES = {
 	},
 }
 LEVEL_WEIGHT = 0.7  # how much an overall level offset counts against a template, relative to shape error
-MARGIN = 0.25  # Chao units: flag only when the expected tone is this much worse than the best tone
+MARGIN = 0.95  # Chao units: flag when the expected tone fits this much worse than the best tone (picked on
+# two-syllable words for at most 10% of correct words flagged; see data/exp_speech.md)
 
 
 @dataclass(frozen=True)
