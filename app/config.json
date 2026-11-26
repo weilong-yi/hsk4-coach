@@ -23,5 +23,9 @@
   "shadow_sentences": 6,
   "target_words": 1950,
   "target_date": "2027-06-01",
-  "tts_voice": "zh-CN-YunxiNeural"
+  "tts_voice": "zh-CN-YunxiNeural",
+  "obsidian": {
+    "vault": "Chinese",
+    "folder": "HSK"
+  }
 }

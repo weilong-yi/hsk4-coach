@@ -19,6 +19,7 @@ curl -LO https://raw.githubusercontent.com/drkameleon/complete-hsk-vocabulary/ma
 for f in per_language/cmn/cmn_sentences.tsv.bz2 per_language/eng/eng_sentences.tsv.bz2 sentences_with_audio.tar.bz2 links.tar.bz2; do
   curl -LO "https://downloads.tatoeba.org/exports/$f"; done
 curl -L -o cedict.txt.gz https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz
+curl -L -o makemeahanzi_dictionary.txt https://raw.githubusercontent.com/skishore/makemeahanzi/master/dictionary.txt  # for the Obsidian export
 cd ../.. && .venv/bin/python tools/build_corpus.py
 ```
 
@@ -29,6 +30,10 @@ Start the app and open http://localhost:8766:
 ```
 
 Your study history lives in `data/study.db` and `data/recordings/`. Both stay on your machine and are not tracked by git, so back them up yourself.
+
+## Obsidian graph
+
+`.venv/bin/python -m app.obsidian` mirrors HSK 1-4 into the Obsidian vault named in `app/config.json` (`obsidian.vault`, `obsidian.folder`): one note per word, character and shared component, with typed links in properties (`characters`, `components`, `sound_part`, `meaning_part`, `sound_family`, `in_words`), example sentences, card state as `state/...` tags, and a `HSK words.base` view. Anything under `## My notes` is yours and is never overwritten. The server re-exports after each session block, but only for the real `data/study.db`. The lookup popup has an "Open in Obsidian" link.
 
 ## Check it
 
@@ -46,6 +51,7 @@ Your study history lives in `data/study.db` and `data/recordings/`. Both stay on
 
 - HSK word list: [drkameleon/complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary), MIT licence, see `data/LICENSE-complete-hsk-vocabulary`. `data/words.json` is derived from it.
 - Example sentences and native audio: [Tatoeba](https://tatoeba.org), CC BY 2.0 FR; audio licences vary per recording. Downloaded locally, not redistributed here.
+- Character decompositions and sound/meaning components: [Make Me a Hanzi](https://github.com/skishore/makemeahanzi). Downloaded locally, not redistributed here.
 - Dictionary glosses: [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cc-cedict), CC BY-SA 4.0. Downloaded locally, not redistributed here.
 - Word frequency: [wordfreq](https://github.com/rspeer/wordfreq).
 - Speech: synthesis through Microsoft's online neural voices via [edge-tts](https://github.com/rany2/edge-tts); recognition through the browser's Web Speech API (Chrome sends audio to Google).

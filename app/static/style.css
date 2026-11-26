@@ -214,3 +214,4 @@ th { font-weight: 600; color: var(--muted); font-size: 13px; }
 }
 
 .panel .resume-note { color: var(--accent); font-weight: 600; }
+.popover .obsidian-link { display: inline-block; margin-top: 6px; color: var(--accent); font-size: 14px; }

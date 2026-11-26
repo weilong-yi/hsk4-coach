@@ -7,7 +7,7 @@ import argparse, json, mimetypes, urllib.parse, random, re, secrets, threading, 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import corpus, db, placement, stats, study, tts
+from . import corpus, db, obsidian, placement, stats, study, tts
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
@@ -59,7 +59,8 @@ class App:
         """Resume today's unfinished session if there is one, else start a new one."""
         resume = study.resume_state(con, self.cfg)
         sid = resume["session_id"] if resume else self.new_session("S")
-        return {"session_id": sid, "blocks": self.cfg["blocks"], "queue": study.queue_counts(con, self.cfg), "resume": resume}
+        return {"session_id": sid, "blocks": self.cfg["blocks"], "queue": study.queue_counts(con, self.cfg), "resume": resume,
+                "obsidian": self.cfg.get("obsidian")}
 
     def event(self, con, body):
         if body["activity"] not in CLIENT_ACTIVITIES:
@@ -81,7 +82,25 @@ class App:
             raise ValueError("rating must be 1-4")
         return study.review(con, body["session_id"], body["word"], body["rating"], body.get("ms"), body.get("extra", {}))
 
+    def sync_vault(self):
+        """Mirror study.db into the Obsidian vault in the background (about 0.2 s). Skipped if the vault is absent."""
+        cfg = self.cfg.get("obsidian")
+        # Only the learner's real database mirrors into the vault; e2e and verify runs use throwaway DBs.
+        if not cfg or self.db_path.resolve() != (ROOT / "data" / "study.db").resolve():
+            return
+
+        def run():
+            with VAULT_LOCK:
+                try:
+                    out = obsidian.export(self.db_path, obsidian.vault_path(cfg["vault"]), cfg["folder"], self.c)
+                    print(f"obsidian: {out['changed']} of {out['notes']} notes updated", flush=True)
+                except (SystemExit, OSError) as e:
+                    print(f"obsidian: skipped ({e})", flush=True)
+
+        threading.Thread(target=run, daemon=True).start()
+
     def block_end(self, con, body):
+        self.sync_vault()
         with con:
             db.log_event(con, body["session_id"], BLOCK_ACTIVITY[body["block"]], stats.BLOCK_END,
                          {"block": body["block"], "block_ms": body["block_ms"], "reason": body["reason"]})
@@ -128,6 +147,7 @@ ROUTES = {
 
 
 FETCH_LOCK = threading.Lock()
+VAULT_LOCK = threading.Lock()
 cooldown_until = 0.0
 
 

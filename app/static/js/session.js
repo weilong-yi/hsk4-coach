@@ -125,7 +125,8 @@ function listenItem(ctx, s) {
         h('div', { class: 'row' }, h('span', { class: 'hanzi md' }, word), pinyin(info.num, 'py lg'),
           h('button', { class: 'small', onclick: () => speak(word) }, '▶')),
         h('p', {}, info.en || 'No dictionary gloss.'),
-        h('p', { class: 'muted' }, info.lvl ? `HSK ${info.lvl}` : 'Not in HSK 1-4', info.added ? ' · added to your cards' : ''));
+        h('p', { class: 'muted' }, info.lvl ? `HSK ${info.lvl}` : 'Not in HSK 1-4', info.added ? ' · added to your cards' : ''),
+        ctx.obsidian && info.lvl ? h('a', { class: 'obsidian-link', href: obsidianUri(ctx.obsidian, word) }, 'Open in Obsidian →') : null);
       pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 340, r.left))}px`;
       pop.style.top = `${r.bottom + 8}px`;
       pop.hidden = false;
@@ -287,6 +288,7 @@ function finished(ctx, message) {
 }
 
 const BLOCKS = { cards: cardsBlock, listen: listenBlock, speak: speakBlock };
+const obsidianUri = (o, word) => `obsidian://open?vault=${encodeURIComponent(o.vault)}&file=${encodeURIComponent(`${o.folder}/${word}`)}`;
 const fmtMs = ms => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 
 export async function sessionScreen(root, scope) {
@@ -325,7 +327,7 @@ export async function sessionScreen(root, scope) {
         h('button', { class: 'link', onclick: () => skip() }, 'Skip block →')),
       body));
     const timer = new BlockTimer(block.minutes, timerEl, bs, usedMs);
-    const ctx = { sid: s.session_id, timer, body, scope: bs, tally, extra: () => ({ block: block.id, block_ms: timer.ms }) };
+    const ctx = { sid: s.session_id, timer, body, scope: bs, tally, obsidian: s.obsidian, extra: () => ({ block: block.id, block_ms: timer.ms }) };
     let reason = 'leave';
     bs.defer(() => post('/api/block_end', { session_id: s.session_id, block: block.id, block_ms: timer.ms, reason }));
     reason = await Promise.race([BLOCKS[block.id](ctx).then(() => (timer.expired ? 'time' : 'done')), skipped.then(() => 'skip')]);
