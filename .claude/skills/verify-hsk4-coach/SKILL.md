@@ -5,7 +5,7 @@ description: Launch a disposable HSK 4 Coach instance (local web app at app/serv
 
 # Verify HSK 4 Coach
 
-HSK 4 Coach is a local web app: a Python stdlib server (`app/server.py`) plus vanilla JS in `app/static/`, storing everything in one SQLite file. The user-facing surface is the browser at `http://localhost:<port>/`. Secondary surface: `tools/weekly.py`, a CLI report over the same DB. All commands below run from the repo root `/Users/ethanwright/Projects/hsk4-coach`.
+HSK 4 Coach is a local web app: a Python stdlib server (`app/server.py`) plus vanilla JS in `app/static/`, storing everything in one SQLite file. The user-facing surface is the browser at `http://localhost:<port>/`. Secondary surface: `tools/weekly.py`, a CLI report over the same DB. All commands below run from the repo root (the folder holding `app/` and `tools/`).
 
 The helper `verify.py` in this folder wraps every step. Define this once per shell (zsh does not word-split a `$V` variable):
 
