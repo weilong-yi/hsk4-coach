@@ -43,7 +43,7 @@ def build(c, rng):
     tone = []
     for combo in combos[:TONE_N]:
         pool = [w for w in c.words.values() if len(w["w"]) == 2 and tuple(tones(w["num"])) == combo
-                and not set(w["w"]) & set("一不") and w["rank"] < 10000]
+                and not set(w["w"]) & set("一不") and not w.get("alt") and w["rank"] < 10000]
         if pool:
             w = rng.choice(pool)
             tone.append({"w": w["w"], "num": w["num"], "tones": list(combo)})

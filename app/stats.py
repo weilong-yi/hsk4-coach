@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from . import db, study
 
 BLOCK_OF = {"card": "cards", "listen": "listen", "read_lookup": "listen", "shadow": "speak"}
+BLOCK_END = "block_end"  # item of the marker event each session block writes when it ends (time, skip, done, leave)
 BINS = [0.0, 0.5, 0.7, 0.8, 0.9, 0.95, 1.0001]
 
 
@@ -13,7 +14,7 @@ def mean(xs):
     return round(sum(xs) / len(xs), 3) if xs else None
 
 
-def compute(con, c, cfg, since=None):
+def compute(con, cfg, since=None):
     evs = [e for e in db.events(con) if since is None or e["ts"][:10] >= since]
     day = lambda e: e["ts"][:10]
 
@@ -29,6 +30,8 @@ def compute(con, c, cfg, since=None):
         days[session_day[sid]]["minutes"][block] += ms / 60000
     for e in evs:
         d, r = days[day(e)], e["result"]
+        if e["item"] == BLOCK_END:
+            continue
         if e["activity"] == "card":
             d["cards"] += 1
             d["new_cards"] += bool(r.get("new"))
@@ -48,7 +51,8 @@ def compute(con, c, cfg, since=None):
                 "shadow_score": mean(v["shadow_scores"])}
                for k, v in sorted(days.items()) if any([v["cards"], v["listened"], v["shadow_attempts"], v["lookups"]])]
 
-    reviews = [e["result"] for e in evs if e["activity"] == "card" and e["result"]["before"]["last_review"]]
+    card_evs = [e["result"] for e in evs if e["activity"] == "card" and e["item"] != BLOCK_END]
+    reviews = [r for r in card_evs if r["before"]["state"] == "Review"]
     calibration = []
     for lo, hi in zip(BINS, BINS[1:]):
         rs = [r for r in reviews if lo <= r["retrievability"] < hi]
@@ -72,7 +76,8 @@ def compute(con, c, cfg, since=None):
     target_date = date.fromisoformat(cfg["target_date"])
     days_left = max(1, (target_date - today).days)
     started = known + len(intro)
-    recent = sum(i[:10] >= (today - timedelta(days=13)).isoformat() for _, _, i in intro) / 14
+    window = min(14, (today - min((date.fromisoformat(i[:10]) for _, _, i in intro), default=today)).days + 1)
+    recent = sum(i[:10] >= (today - timedelta(days=window - 1)).isoformat() for _, _, i in intro) / window
     remaining = max(0, cfg["target_words"] - started)
     words = {"target": cfg["target_words"], "target_date": cfg["target_date"], "days_left": days_left,
              "known_placement": known, "mature": mature, "learning": len(intro) - mature, "queued": queued,
@@ -81,7 +86,8 @@ def compute(con, c, cfg, since=None):
              "projected_date": (today + timedelta(days=round(remaining / recent))).isoformat() if recent and remaining else None}
 
     return {"since": since, "per_day": per_day, "calibration": calibration,
-            "reviews_with_history": len(reviews), "reading": reading, "words": words,
+            "calibration_reviews": len(reviews),
+            "learning_step_reviews": sum(r["before"]["state"] != "Review" for r in card_evs), "reading": reading, "words": words,
             "totals": {"cards": sum(d["cards"] for d in per_day), "listened": sum(d["listened"] for d in per_day),
                        "shadow_attempts": sum(d["shadow_attempts"] for d in per_day),
                        "minutes": round(sum(sum(d["minutes"].values()) for d in per_day), 1)}}

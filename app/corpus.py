@@ -2,6 +2,8 @@ import json, re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pypinyin import Style, pinyin
+
 ROOT = Path(__file__).resolve().parent.parent
 HAN = re.compile(r"[一-鿿]")
 DIGITS = str.maketrans("0123456789０１２３４５６７８９", "零一二三四五六七八九零一二三四五六七八九")
@@ -11,7 +13,7 @@ def han(text):
     return "".join(HAN.findall(text.translate(DIGITS)))
 
 
-NOT_A_MEANING = re.compile(r"variant of|surname|bound form", re.I)
+NOT_A_MEANING = re.compile(r"variant of|surname|bound form|used in ", re.I)
 
 
 def segments(en):
@@ -120,9 +122,14 @@ class Corpus:
         return out
 
 
+def common_reading(word):
+    return " ".join(x[0] for x in pinyin(word, style=Style.TONE3, neutral_tone_with_five=True)).replace("v", "u:")
+
+
 def repair_forms(words, raw_path):
-    """data/words.json keeps each entry's first reading, which is often a surname or variant form
-    (百 "surname Bai", 都 "Du1"). Re-pick the first lowercase reading that carries a real meaning."""
+    """data/words.json keeps each entry's first reading, which is often a surname, variant, or rare reading
+    (百 "surname Bai", 都 "Du1", 吗 "ma2", 要 "yao1"). Among the lowercase readings that carry a real meaning,
+    take the one pypinyin considers most common, else the first; keep the others as `alt`."""
     if not raw_path.exists():
         return 0
     fixed = 0
@@ -130,12 +137,17 @@ def repair_forms(words, raw_path):
         w = words.get(e["simplified"])
         if w is None:
             continue
+        forms = {}
         for f in e["forms"]:
             t, meanings = f["transcriptions"], [m for m in f["meanings"] if not NOT_A_MEANING.search(m)]
             if meanings and t["numeric"][:1].islower():
-                fixed += t["numeric"] != w["num"] or "; ".join(meanings[:3]) != w["en"]
-                w.update(num=t["numeric"], py=t["pinyin"], en="; ".join(meanings[:3]))
-                break
+                forms.setdefault(t["numeric"], (t["pinyin"], meanings))
+        if not forms:
+            continue
+        num = common_reading(w["w"]) if common_reading(w["w"]) in forms else next(iter(forms))
+        py, meanings = forms.pop(num)
+        fixed += num != w["num"] or "; ".join(meanings[:3]) != w["en"]
+        w.update(num=num, py=py, en="; ".join(meanings[:3]), alt=[{"num": n, "en": "; ".join(m[:2])} for n, (_, m) in forms.items()])
     return fixed
 
 

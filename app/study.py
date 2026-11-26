@@ -39,12 +39,16 @@ def interval(td):
     return "<1m"
 
 
+def sentence_payload(c, s):
+    return {**{k: s[k] for k in ("id", "zh", "en", "tok", "audio", "lvl")}, "nums": [c.lookup(t)["num"] for t in s["tok"]]}
+
+
 def card_payload(con, c, word, card, is_new):
     utc = datetime.now(timezone.utc)
     w, ex = c.words[word], c.example(word, known_set(con))
-    return {"w": word, "num": w["num"], "en": w["en"], "lvl": w["lvl"], "new": is_new, "state": card.state.name,
+    return {"w": word, "num": w["num"], "en": w["en"], "alt": w.get("alt", []), "lvl": w["lvl"], "new": is_new, "state": card.state.name,
             "intervals": {r: interval(PREVIEW.review_card(card, rating, utc)[0].due - utc) for r, rating in RATINGS.items()},
-            "example": ex and {k: ex[k] for k in ("id", "zh", "en", "audio", "tok")}}
+            "example": ex and sentence_payload(c, ex)}
 
 
 def queue_counts(con, cfg):
@@ -110,11 +114,11 @@ def focus_words(con):
 
 def listen_bundle(con, c, cfg, rng, exclude=()):
     cutoff = (db.now() - timedelta(days=7)).isoformat()
-    recent = {int(r[0]) for r in con.execute("SELECT item FROM events WHERE activity='listen' AND ts>=?", (cutoff,))}
+    recent = {int(r[0]) for r in con.execute("SELECT item FROM events WHERE activity='listen' AND item!='block_end' AND ts>=?", (cutoff,))}
     known, focus = known_set(con), focus_words(con)
     sents = c.bundle(known, rng, share=cfg["bundle_known_share"], max_sents=cfg["bundle_sentences"],
                      focus=focus, exclude=recent | set(exclude))
-    return [{**{k: s[k] for k in ("id", "zh", "en", "tok", "audio", "lvl")},
+    return [{**sentence_payload(c, s),
              "marks": {t: "new" if t not in known else "focus" for t in s["tok"] if t not in known or focus.get(t) == 3}}
             for s in sents]
 
@@ -137,12 +141,12 @@ def lookup(con, c, session_id, word, ms, extra):
 
 
 def shadow_items(con, c, cfg, session_id, rng):
-    seen = list(dict.fromkeys(e["item"] for e in db.events(con, session_id, "listen")))
+    seen = list(dict.fromkeys(e["item"] for e in db.events(con, session_id, "listen") if e["item"] != "block_end"))
     pool = [c.by_id[int(i)] for i in seen if int(i) in c.by_id]
     if len(pool) < cfg["shadow_sentences"]:
         pool += [c.by_id[s["id"]] for s in listen_bundle(con, c, cfg, rng, exclude={s["id"] for s in pool})]
     pool.sort(key=lambda s: (s["audio"] is None, abs(len(han(s["zh"])) - 10)))
-    return [{k: s[k] for k in ("id", "zh", "en", "tok", "audio")} for s in pool[:cfg["shadow_sentences"]]]
+    return [sentence_payload(c, s) for s in pool[:cfg["shadow_sentences"]]]
 
 
 def match(target, transcript):
@@ -170,19 +174,21 @@ def save_shadow(con, c, rec_dir, p):
     session_id, sid, attempt = p["session_id"], int(p["sentence_id"]), int(p["attempt"])
     if not SESSION_ID.match(session_id) or sid not in c.by_id:
         raise ValueError("bad session or sentence")
-    audio = base64.b64decode(p["wav_b64"])
-    with wave.open(io.BytesIO(audio)) as wf:
-        fmt, frames = (wf.getnchannels(), wf.getframerate(), wf.getsampwidth()), wf.getnframes()
-    if fmt != (1, 16000, 2):
-        raise ValueError(f"expected 16 kHz mono 16-bit WAV, got {fmt}")
-    path = rec_dir / session_id / f"{sid}-{attempt}.wav"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(audio)
+    path, frames = None, 0
+    if p.get("wav_b64"):
+        audio = base64.b64decode(p["wav_b64"])
+        with wave.open(io.BytesIO(audio)) as wf:
+            fmt, frames = (wf.getnchannels(), wf.getframerate(), wf.getsampwidth()), wf.getnframes()
+        if fmt != (1, 16000, 2):
+            raise ValueError(f"expected 16 kHz mono 16-bit WAV, got {fmt}")
+        path = rec_dir / session_id / f"{sid}-{attempt}.wav"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(audio)
     transcript = p.get("transcript") or ""
     scored = match(c.by_id[sid]["zh"], transcript) if transcript else {"chars": han(c.by_id[sid]["zh"]), "marks": None, "score": None}
     result = {**p.get("extra", {}), "attempt": attempt, "transcript": transcript, "error": p.get("error"),
-              "score": scored["score"], "marks": scored["marks"], "wav": str(path), "duration_s": round(frames / 16000, 3),
+              "score": scored["score"], "marks": scored["marks"], "wav": path and str(path), "duration_s": round(frames / 16000, 3),
               "native": c.by_id[sid]["audio"] is not None}
     with con:
         db.log_event(con, session_id, "shadow", sid, result, p.get("ms"))
-    return {**scored, "wav": str(path), "duration_s": result["duration_s"]}
+    return {**scored, "wav": result["wav"], "duration_s": result["duration_s"]}

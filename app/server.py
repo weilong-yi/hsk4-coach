@@ -3,7 +3,7 @@
     .venv/bin/python -m app.server            # http://localhost:8766
     .venv/bin/python -m app.server --db /tmp/x.db --port 8767
 """
-import argparse, json, mimetypes, random, re, secrets, urllib.request
+import argparse, json, mimetypes, random, re, secrets, threading, time, urllib.error, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
 AUDIO_CACHE = ROOT / "data" / "audio_native"
 CLIENT_ACTIVITIES = {"placement_vocab", "placement_listen", "placement_tone", "placement_read", "listen"}
+BLOCK_ACTIVITY = {"cards": "card", "listen": "listen", "speak": "shadow"}
 
 
 class App:
@@ -37,7 +38,9 @@ class App:
                 "queue": study.queue_counts(con, self.cfg), "known": len(study.known_set(con))}
 
     def placement_start(self, con, _):
-        return {"session_id": self.new_session("P"), **placement.build(self.c, self.rng)}
+        items = placement.build(self.c, self.rng)
+        prefetch(it["audio"] for it in items["listen"])
+        return {"session_id": self.new_session("P"), **items}
 
     def placement_reading(self, con, body):
         est = placement.vocab_estimate(self.c, db.events(con, body["session_id"]))
@@ -67,8 +70,16 @@ class App:
             raise ValueError("rating must be 1-4")
         return study.review(con, body["session_id"], body["word"], body["rating"], body.get("ms"), body.get("extra", {}))
 
+    def block_end(self, con, body):
+        with con:
+            db.log_event(con, body["session_id"], BLOCK_ACTIVITY[body["block"]], stats.BLOCK_END,
+                         {"block": body["block"], "block_ms": body["block_ms"], "reason": body["reason"]})
+        return {"ok": True}
+
     def bundle(self, con, _):
-        return {"sentences": study.listen_bundle(con, self.c, self.cfg, self.rng)}
+        sents = study.listen_bundle(con, self.c, self.cfg, self.rng)
+        prefetch(s["audio"] for s in sents)
+        return {"sentences": sents}
 
     def lookup(self, con, body):
         return study.lookup(con, self.c, body["session_id"], body["word"], body.get("ms"), body.get("extra", {}))
@@ -80,7 +91,7 @@ class App:
         return study.save_shadow(con, self.c, self.rec_dir, body)
 
     def stats(self, con, _):
-        return stats.compute(con, self.c, self.cfg)
+        return stats.compute(con, self.cfg)
 
 
 ROUTES = {
@@ -93,6 +104,7 @@ ROUTES = {
     ("POST", "/api/event"): App.event,
     ("POST", "/api/cards/next"): App.cards_next,
     ("POST", "/api/cards/review"): App.cards_review,
+    ("POST", "/api/block_end"): App.block_end,
     ("POST", "/api/bundle"): App.bundle,
     ("POST", "/api/lookup"): App.lookup,
     ("POST", "/api/shadow/items"): App.shadow_items,
@@ -101,23 +113,59 @@ ROUTES = {
 }
 
 
-def fetch_audio(audio_id):
+FETCH_LOCK = threading.Lock()
+cooldown_until = 0.0
+
+
+def fetch_audio(audio_id, wait=3):
+    """Cached Tatoeba mp3. Tatoeba answers concurrent downloads with 429s and stalls, so fetch one at a time,
+    give up after `wait` seconds in line, and back off for 30 s after a 429. The client falls back to TTS."""
+    global cooldown_until
     path = AUDIO_CACHE / f"{audio_id}.mp3"
-    if not path.exists():
-        req = urllib.request.Request(f"https://tatoeba.org/audio/download/{audio_id}", headers={"User-Agent": "hsk4-coach/0.1"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            data = r.read()
-        AUDIO_CACHE.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".part")
-        tmp.write_bytes(data)
-        tmp.replace(path)
+    if path.exists():
+        return path.read_bytes()
+    if not FETCH_LOCK.acquire(timeout=wait):
+        raise OSError("another audio download is in progress")
+    try:
+        if not path.exists():
+            if time.time() < cooldown_until:
+                raise OSError("Tatoeba rate limit cooldown")
+            req = urllib.request.Request(f"https://tatoeba.org/audio/download/{audio_id}", headers={"User-Agent": "hsk4-coach/0.1"})
+            try:
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    data = r.read()
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    cooldown_until = time.time() + 30
+                raise
+            AUDIO_CACHE.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".part")
+            tmp.write_bytes(data)
+            tmp.replace(path)
+    finally:
+        FETCH_LOCK.release()
     return path.read_bytes()
+
+
+def prefetch(audio_ids):
+    ids = [i for i in audio_ids if i and not (AUDIO_CACHE / f"{i}.mp3").exists()]
+
+    def run():
+        for i in ids:
+            try:
+                fetch_audio(i, wait=60)
+            except OSError:
+                pass
+            time.sleep(1)
+
+    if ids:
+        threading.Thread(target=run, daemon=True).start()
 
 
 def make_handler(app):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
-            if "/api/" in self.path and not self.path.startswith("/api/state"):
+            if args[1:2] != ("200",) or "/api/" in self.path and not self.path.startswith("/api/state"):
                 super().log_message(fmt, *args)
 
         def send(self, code, body, ctype):
