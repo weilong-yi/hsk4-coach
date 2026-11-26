@@ -1,6 +1,6 @@
 # Speak block (shadowing)
 
-The learner hears a sentence from today's bundle, records themself saying it, and sees a live transcript and a per-character match score. Each attempt saves a 16 kHz mono WAV.
+The learner hears a sentence from today's bundle, records themself saying it, and sees a live transcript and how much of the sentence speech recognition understood. Each attempt saves a 16 kHz mono WAV.
 
 ## Sub-features
 
@@ -28,7 +28,6 @@ Preconditions:
 ## Gotchas
 
 - All TTS uses the Tingting voice (`mandarinVoice()` in `app/static/js/audio.js`). `events.result_json` `$.voice` should read `Tingting` for card and placement_tone events.
-
 - Real transcription is unverified in headless Chrome. Screenshot `21-speak-scored-scripted-recognizer` proves the scoring UI, not the recognizer.
 - The app must be on `http://localhost`; a `file://` page gets no mic.
 - Pitch-based tone feedback is not in the app yet (see `data/exp_speech.md`); do not look for it.
