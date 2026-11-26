@@ -115,7 +115,8 @@ def build_notes(c, states, mmah):
             p.update(st)
             if st["state"] != "known":
                 p["known_neighbors"] = len({k for ch in name for k in in_words.get(ch, []) + ([ch] if ch in words else [])} & known)
-        p["tags"] = [f"hsk/{w['lvl']}" if w else "hsk/component"] + ([f"state/{p['state']}"] if w else [])
+        kind_tag = f"hsk/{w['lvl']}" if w else "hsk/character" if is_char else "hsk/component"
+        p["tags"] = [kind_tag] + ([f"state/{p['state']}"] if w else [])
         ex = sorted((s for s in c.by_word.get(name, []) if s["lvl"] <= 4),
                     key=lambda s: (s["audio"] is None, abs(len(s["zh"]) - 10), s["id"]))[:3] if w else []
         body = [f"# {name}", f"**{p['pinyin']}** {p['meaning']}" + (f" · HSK {w['lvl']}" if w else ""), ""]
