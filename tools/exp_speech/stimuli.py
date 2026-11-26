@@ -5,9 +5,12 @@ output file already exists, so a rerun only fills gaps.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import random
 import subprocess
+import tarfile
 import time
 import urllib.request
 from collections import Counter
@@ -116,6 +119,7 @@ def select_items() -> list[dict]:
 
 	native = [s for s in sents if s["lvl"] <= 4 and s["audio"]]
 	rng.shuffle(native)
+	speakers = audio_speakers()
 	n = 0
 	for s in native:
 		r = clean(s, 4)
@@ -125,7 +129,22 @@ def select_items() -> list[dict]:
 			n += 1
 		if n == N_SENT_E2:
 			break
+	# Native clips as correct human speech for measuring false alarms (pitch only): every usable clip of
+	# 3-6 syllables, plus the E2 clips for longer ones. Tatoeba serves about one clip a minute.
+	e2_audio = {i["audio"] for i in items if i["exp"] == "E2"}
+	for s in sorted(native, key=lambda s: s["id"]):
+		r = clean(s, 4)
+		if r and (3 <= len(r[0]) <= 6 or s["audio"] in e2_audio):
+			items.append({"id": f"h:{s['id']}", "kind": "sentence", "exp": "H", "chars": r[0], "pinyin": r[1],
+				"expected": [sorted(t) for t in r[2]], "audio": s["audio"], "speaker": speakers.get(s["audio"], "?")})
 	return items
+
+
+def audio_speakers() -> dict[int, str]:
+	"""Tatoeba audio id -> contributor username, from the sentences_with_audio export."""
+	with tarfile.open(DATA / "raw" / "sentences_with_audio.tar.bz2") as t:
+		f = t.extractfile(t.getmember("sentences_with_audio.csv"))
+		return {int(r[1]): r[2] for r in csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter="\t") if len(r) > 2}
 
 
 def render(voice: str, text: str, out: Path) -> None:
@@ -136,15 +155,20 @@ def render(voice: str, text: str, out: Path) -> None:
 
 
 def fetch_native(audio_id: int, out: Path) -> None:
+	"""Download one Tatoeba clip and convert it to 16 kHz mono WAV. Both files appear only when complete."""
 	if out.exists():
 		return
 	out.parent.mkdir(parents=True, exist_ok=True)
 	mp3 = out.with_suffix(".mp3")
 	if not mp3.exists():
 		req = urllib.request.Request(f"https://tatoeba.org/audio/download/{audio_id}", headers={"User-Agent": "exp-speech/0.1"})
-		mp3.write_bytes(urllib.request.urlopen(req, timeout=60).read())
+		tmp = mp3.with_suffix(".part")
+		tmp.write_bytes(urllib.request.urlopen(req, timeout=120).read())
+		tmp.rename(mp3)
 		time.sleep(0.5)
-	subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", str(mp3), str(out)], check=True)
+	tmp = out.with_suffix(".tmp.wav")
+	subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", str(mp3), str(tmp)], check=True)
+	tmp.rename(out)
 
 
 def f0_frames(wav: Path, span: tuple[float, float]) -> np.ndarray:
@@ -189,6 +213,12 @@ def build() -> dict:
 	clips = []
 	for it in items:
 		key = it["id"].replace(":", "_")
+		if it["exp"] == "H":
+			p = CACHE / "native" / f"{it['audio']}.wav"
+			fetch_native(it["audio"], p)
+			clips.append({"id": f"native|raw|{it['id']}", "item": it["id"], "voice": "native", "variant": "raw",
+				"speaker": it["speaker"], "wav": str(p.relative_to(HERE))})
+			continue
 		for v in VOICES:
 			p = CACHE / "raw" / v / f"{key}.wav"
 			render(v, it["chars"], p)
@@ -205,6 +235,12 @@ def build() -> dict:
 		_, f0 = tc.analyze(HERE / c["wav"], len(it["expected"]))
 		f0s.setdefault(c["voice"], []).append(f0)
 	bases = {v: tc.baseline(f) for v, f in f0s.items() if v != "native"}
+	spk: dict[str, list] = {}
+	for c in clips:
+		if c.get("speaker"):
+			it = next(i for i in items if i["id"] == c["item"])
+			spk.setdefault(c["speaker"], []).append(tc.analyze(HERE / c["wav"], len(it["expected"]))[1])
+	speaker_bases = {k: vars(tc.baseline(v)) for k, v in spk.items()}
 	for c in clips:
 		it = next(i for i in items if i["id"] == c["item"])
 		b = bases.get(c["voice"]) or tc.baseline([tc.analyze(HERE / c["wav"], len(it["expected"]))[1]])
@@ -279,7 +315,7 @@ def build() -> dict:
 		c["valid"] = bool(c["rms_to_donor"] is not None and c["rms_to_orig"] is not None and c["rms_to_donor"] < c["rms_to_orig"])
 
 	man = {"voices": VOICES, "items": items, "clips": clips,
-		"baselines": {v: vars(b) for v, b in bases.items()}, "plan_pairs": {f"{a}->{b}": n for (a, b), n in sorted(pair_count.items())}}
+		"baselines": {v: vars(b) for v, b in bases.items()}, "speaker_baselines": speaker_bases, "plan_pairs": {f"{a}->{b}": n for (a, b), n in sorted(pair_count.items())}}
 	(CACHE / "manifest.json").write_text(json.dumps(man, ensure_ascii=False, indent=1))
 	return man
 
