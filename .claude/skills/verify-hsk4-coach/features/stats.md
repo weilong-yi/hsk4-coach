@@ -6,6 +6,7 @@ The learner checks progress: minutes per block per day, reviews, recall calibrat
 
 - `stats-page` `#/stats` renders all sections, empty states included.
 - `stats-pace` words known vs target, with the pace needed per day.
+- `stats-momentum` streak, freezes and the share of days the minimum was met (7 and 28 days); see [momentum](./momentum.md).
 - `stats-weekly` `tools/weekly.py --db <path> [--days N]` prints the report.
 
 ## How to get to it (user POV)

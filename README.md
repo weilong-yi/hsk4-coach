@@ -6,7 +6,8 @@ A local study app for passing the new-format HSK 4 (HSK 3.0, 2025 syllabus, 1,95
 - **Daily 30-minute session** in three timed blocks: FSRS flashcards, listening and reading at about 97% known words, and shadowing scored by speech recognition. Leave mid-session and it resumes where you stopped.
 - **Audio** from native Tatoeba recordings when available, otherwise a neural voice that pronounces Beijing erhua.
 - **Speaking scores** that measure whether you were understood, accept homophones and Beijing erhua, and never claim to judge tones.
-- **Progress**: stats page, weekly report, and the pace needed to reach 1,950 words by 1 June 2027.
+- **Showing up**: a 5-minute session that counts as a study day, three daily rings, a streak with freezes instead of resets, an if-then plan with a macOS reminder, and session feedback built from real progress. Reviews cap at 60 a day, so a comeback after a break stays a normal-sized session.
+- **Progress**: stats page, weekly report with streak and days met, and the pace needed to reach 1,950 words by 1 June 2027.
 - **Graph page**: any word's characters, components and sound family as an interactive graph, coloured by what you know.
 - **Obsidian graph**: the same graph as linked notes in your Obsidian vault.
 
@@ -39,18 +40,21 @@ Start the app and open http://localhost:8766, then follow the [user guide](docs/
 .venv/bin/python -m app.server
 ```
 
+Saving a plan on Home installs a daily reminder (a LaunchAgent in `~/Library/LaunchAgents/`). Remove it with `.venv/bin/python -m app.reminder --uninstall`.
+
 Your study history lives in `data/study.db` and `data/recordings/`. Both stay on your machine and are not tracked by git, so back them up yourself.
 
 ## Obsidian graph
 
-Set your vault name in `app/config.json` (`obsidian.vault`, `obsidian.folder`). Usage is in the [user guide](docs/GUIDE.md#6-use-the-obsidian-graph).
+Set your vault name in `app/config.json` (`obsidian.vault`, `obsidian.folder`). Usage is in the [user guide](docs/GUIDE.md#7-use-the-obsidian-graph).
 
 
 `.venv/bin/python -m app.obsidian` mirrors HSK 1-4 into the Obsidian vault named in `app/config.json` (`obsidian.vault`, `obsidian.folder`): one note per word, character and shared component, with typed links in properties (`characters`, `components`, `sound_part`, `meaning_part`, `sound_family`, `in_words`), example sentences, card state as `state/...` tags, and a `HSK words.base` view. Anything under `## My notes` is yours and is never overwritten. The server re-exports after each session block, but only for the real `data/study.db`. The lookup popup has an "Open in Obsidian" link.
 
 ## Check it
 
-- `.venv/bin/python app/e2e.py` drives placement, a full session, session resume and stats in headless Chrome against a throwaway database.
+- `.venv/bin/python app/e2e.py` drives placement, a 5-minute session, a full session, session resume, stats, the plan and the review cap in headless Chrome against throwaway databases.
+- `.venv/bin/python -m app.test_momentum` unit-tests the study day, rings, minimum, streak and freezes.
 - `.claude/skills/verify-hsk4-coach/` launches isolated instances and keeps evidence (see its `SKILL.md`).
 - `tools/weekly.py` prints a progress report from the study database.
 

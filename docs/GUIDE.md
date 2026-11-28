@@ -1,6 +1,6 @@
 # Using HSK 4 Coach
 
-This guide is for the learner. It covers starting the app, the placement test, the daily 30-minute session, speaking practice, progress, the Obsidian graph, and what to do when something goes wrong. For installation, see the [README](../README.md).
+This guide is for the learner. It covers starting the app, the placement test, the daily 30-minute session, speaking practice, the 5-minute minimum and your streak, progress, the Obsidian graph, and what to do when something goes wrong. For installation, see the [README](../README.md).
 
 ## Start the app
 
@@ -36,7 +36,7 @@ Click **Start 30-minute session** on Home. The session has three timed blocks. E
 
 ### Cards (8 minutes)
 
-Flashcards scheduled by FSRS, a spaced-repetition method: words come back just before you would forget them. Reviews come first, then up to 8 new words a day.
+Flashcards scheduled by FSRS, a spaced-repetition method: words come back just before you would forget them. Reviews come first, then up to 8 new words a day. Reviews stop at 60 a day (see section 3).
 
 1. Listen to the word and try to recall its meaning before looking.
 2. Press **Space** to reveal the characters, pinyin, meaning and an example sentence.
@@ -60,7 +60,7 @@ Sentences chosen so that about 97% of their words are ones you know, with a few 
 3. The text appears. Click any word you are unsure of to see its pinyin and meaning. HSK words you look up become flashcards. **Esc** closes the popup.
 4. **T** shows the English translation. **Enter** goes to the next sentence.
 
-The word popup also has **Graph →** (see section 4) and **Open in Obsidian →**, which opens that word's note in your vault (see section 6).
+The word popup also has **Graph →** (see section 5) and **Open in Obsidian →**, which opens that word's note in your vault (see section 7).
 
 ### Speak (10 minutes)
 
@@ -83,14 +83,55 @@ The first time, the browser asks for microphone access; allow it. In Chrome, you
 
 You can click Home or Stats, reload, or close the tab. Your session is kept. Home will show **Resume session · *block name***, and the block continues with its remaining time and your earlier answers. A session older than 12 hours starts fresh.
 
-## 3. Check your progress
+## 3. Keep showing up: the 5-minute minimum, rings and streak
 
-- **Home** shows reviews due, new words today, words started out of 1,950, and the pace you need per day to reach 1,950 by 1 June 2027.
-- **Stats** shows minutes per block per day, how often you recalled cards compared with what the scheduler predicted, your listening "understood" rate, your speaking trend, and your reading speed.
+A short day still counts. The top of Home shows today's three rings:
+
+| Ring | Fills with | Full at | Counts as today's minimum at |
+|---|---|---|---|
+| Cards | card reviews | 20 | 10 |
+| Listen | sentences you answered with **Y** or **N** | 15 | 8 |
+| Speak | shadowing attempts with a saved recording | 5 | 3 |
+
+- **Today's minimum** is met as soon as any one ring is half full: its arc reaches the small tick. Below the streak, Home says what would do it, for example "10 cards would count today", or "Today's minimum is met."
+- **5-minute session** (next to **Start 30-minute session** on Home) is one 5-minute cards block, enough for the 10 cards that meet the minimum. It is a session of its own: your 30-minute session is still there to start or resume.
+- **A study day starts at 4 a.m.** Studying at 1:30 at night counts for the day before.
+- **Streak** is the number of days you met the minimum. It is plain counting: no points, nothing to buy.
+- **Freezes.** Seven met days in a row earn a freeze, and you can keep two. A missed day uses a freeze: the day shows as frozen and the streak carries on. With no freeze left, the streak starts again at 0. Today never breaks your streak; it joins once you meet the minimum.
+- **The calendar strip** shows up to four weeks, Monday to Sunday, starting from the week you began: solid squares for met days, striped for frozen, grey for missed, an outline around today, and small dots for the days still to come. Hover a square for its date.
+
+### After each session
+
+**Session complete** shows what changed, all counted from your answers:
+
+- Today's rings and streak, with **+1 today** when this session met the minimum.
+- **Moved forward**: words you rated Good or Easy that are now in review, which means FSRS will next show them days from now instead of minutes.
+- **New words** you started, and how many reviews you remembered.
+- **Listening understood** over the last 7 days compared with the 7 days before.
+
+Click a word to open it in the graph.
+
+### Coming back after a break
+
+Reviews stop at 60 a day. When you reach that, the cards block says "Today's reviews are done; N more are spread over the next days." The backlog comes back over the following days, so the first session after a break is a normal size. New words come after due reviews, so they wait while a backlog is left. Home's **Reviews due** tile shows today's share and how many wait for later.
+
+### Your plan and the reminder
+
+Under the calendar, **Plan** turns your study time into one sentence: pick a time and something you already do every day, such as "after dinner at my desk", and click **Save plan**. Home then shows "If it's 19:30 after dinner at my desk, I study." Click **Edit** to change it.
+
+Saving the plan also sets a reminder on this Mac. At that time each day it shows a notification, "After dinner at my desk: time for Chinese (http://localhost:8766)", but only if today's minimum is not met yet. It runs even when the app is closed; start the app as usual to study.
+
+- **Turn the reminder off:** `.venv/bin/python -m app.reminder --uninstall`. Saving the plan again turns it back on.
+- **See what it would do right now:** `.venv/bin/python -m app.reminder --notify --print`.
+
+## 4. Check your progress
+
+- **Home** shows today's rings, streak and calendar, reviews due today, new words today, words started out of 1,950, and the pace you need per day to reach 1,950 by 1 June 2027.
+- **Stats** shows your streak and freezes, the share of days you met the minimum over the last 7 and 28 days, minutes per block per day, how often you recalled cards compared with what the scheduler predicted, your listening "understood" rate, your speaking trend, and your reading speed.
 - **Reading check** on Home runs another timed read, to track reading speed over time.
-- For a text report of the last week: `.venv/bin/python tools/weekly.py` (add `--days 30` for a month).
+- For a text report of the last week, streak and days met included: `.venv/bin/python tools/weekly.py` (add `--days 30` for a month).
 
-## 4. Explore the graph
+## 5. Explore the graph
 
 **Graph** in the top bar shows how a word connects to others: its characters, the words that share them, each character's components, and characters with the same sound part.
 
@@ -103,11 +144,11 @@ You can click Home or Stats, reload, or close the tab. Your session is kept. Hom
 
 During a session, the word popup in Listen & read has **Graph →**, which opens the graph in a new tab so your session keeps going.
 
-## 5. Audio
+## 6. Audio
 
 Sentences with a native recording play that recording. Everything else is read by a neural voice (Yunxi) that pronounces erhua the Beijing way. The voice needs an internet connection the first time each sentence is played; after that it is saved and plays instantly. If the voice service is unreachable, the app falls back to your Mac's Tingting voice.
 
-## 6. Use the Obsidian graph
+## 7. Use the Obsidian graph
 
 The app mirrors HSK 1–4 into your Obsidian vault (the vault named in `app/config.json`, folder `HSK`). It updates automatically at the end of every block. To update by hand:
 
@@ -126,11 +167,11 @@ What you get:
 
 A new local graph pane starts without colours. Copy the groups from the main graph's **Groups** panel: `tag:#state/known` (#00a888), `tag:#state/learning OR tag:#state/review OR tag:#state/relearning` (#e76624), `tag:#state/new` (#338ced), `tag:#hsk/component` (#5c5c5c).
 
-## 7. Back up your progress
+## 8. Back up your progress
 
 Everything you have done is in `data/study.db`, and your recordings are in `data/recordings/`. Neither is in git, so neither is on GitHub. Copy both somewhere safe, for example iCloud Drive, now and then. If you lose `study.db`, you lose your flashcard history.
 
-## 8. When something goes wrong
+## 9. When something goes wrong
 
 | Problem | What to do |
 |---|---|
@@ -141,4 +182,5 @@ Everything you have done is in `data/study.db`, and your recordings are in `data
 | No sound | Check the volume, then the internet connection (the neural voice needs it the first time). |
 | Page does not load | Make sure the terminal running the app is still open, and that you are on `http://localhost:8766`. |
 | "Address already in use" when starting | The app is already running in another terminal. Use that one, or close it first. |
+| No reminder at the plan's time | Run `.venv/bin/python -m app.reminder --notify --print`. If it prints a `notify:` line, allow notifications for Script Editor in System Settings → Notifications (macOS shows script notifications under that name). If it says the minimum is met, there is nothing to remind you of. |
 | Obsidian notes not updating | Run `.venv/bin/python -m app.obsidian` and read its output. It only syncs your real `data/study.db`. |

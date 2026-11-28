@@ -27,5 +27,6 @@ The maintained source for verifying what a learner can do in HSK 4 Coach. Read t
 - [Daily session: cards and listen & read](./daily-session.md): FSRS cards, audio-first sentences, word lookup.
 - [Speak block (shadowing)](./speaking.md): record, recognizer transcript, WAV upload, mic release.
 - [Resume a session](./resume.md): leave by nav, reload or closed tab; same session, block, timer and tally on return.
+- [Momentum](./momentum.md): rings, streak and freezes, calendar, 5-minute session, session feedback, plan and reminder, review cap.
 - [Graph page](./graph.md): local character graph, search, depth, recentering.
 - [Stats and weekly report](./stats.md): `#/stats` page and `tools/weekly.py`.

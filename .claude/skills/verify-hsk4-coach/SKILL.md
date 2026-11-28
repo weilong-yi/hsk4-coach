@@ -44,7 +44,7 @@ The driver reuses the journeys in `app/e2e.py` (`placement`, `session`, `shot`) 
 
 - Routes: `#/home`, `#/session`, `#/stats` (nav links carry `data-route`).
 - Headings: `Placement test (about 10 minutes)`, `Listening`, `Tones`, `Timed reading`, `Your starting profile`, `Cards · 8 minutes`, `Listen & read · 12 minutes`, `Speak · 10 minutes`, `Session complete`. Block headings follow `app/config.json` (`blocks[].title` and `minutes`); a config change renames them.
-- Buttons/text: `Start placement`, the primary `#/session` link (labelled `Start today's session` on the placement results and `Start 30-minute session` on home, the minutes following the config), `Quick check: what does this word mean?`, `Which of these did the text say?`, `Recording… speak now`.
+- Buttons/text: `Start placement`, the primary `#/session` link (labelled `Start today's session` on the placement results and `Start 30-minute session` on home, the minutes following the config), the `5-minute session` link (`#/session?quick=1`, heading `Cards · 5 minutes`), `Quick check: what does this word mean?`, `Which of these did the text say?`, `Recording… speak now`.
 - Keyboard: every screen is keyboard-driven. `y`/`n` vocab, `1-4` options and card grades, `Space` flip, `Enter` continue/next, `r` start/stop recording.
 - `?timescale=N` runs block timers N times faster. It only changes the timer, not what is logged.
 
