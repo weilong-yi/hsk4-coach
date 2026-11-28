@@ -6,7 +6,7 @@ from fsrs import Card, Rating, Scheduler
 import jieba
 from pypinyin import Style, lazy_pinyin
 
-from . import db
+from . import db, momentum
 from .corpus import han
 
 SCHED = Scheduler()
@@ -53,17 +53,32 @@ def card_payload(con, c, word, card, is_new):
             "example": ex and sentence_payload(c, ex)}
 
 
+def reviews_left(con, cfg):
+    """Card reviews still allowed in today's study day (momentum.max_reviews_per_day), counted from the event log.
+    The cap keeps a comeback session after a gap normal-sized; the rest of the backlog waits for the next days."""
+    m, now = cfg["momentum"], db.now()
+    day = momentum.study_day(now, m["day_starts_hour"])
+    rows = con.execute("SELECT ts FROM events WHERE activity='card' AND item!='block_end' AND ts>=?",
+                       ((now - timedelta(days=2)).isoformat(),))
+    done = sum(momentum.study_day(datetime.fromisoformat(ts), m["day_starts_hour"]) == day for (ts,) in rows)
+    return max(0, m["max_reviews_per_day"] - done)
+
+
 def queue_counts(con, cfg):
+    """Reviews and new words left for today within the review cap; `later` is the due backlog beyond it."""
     utc, intro = datetime.now(timezone.utc), introduced(con)
     new_today = sum(i[:10] == today() for _, _, i in intro)
     queued = con.execute("SELECT COUNT(*) FROM cards WHERE introduced_at IS NULL").fetchone()[0]
-    return {"due": sum(card.due <= utc for _, card, _ in intro),
-            "new": min(queued, max(0, cfg["new_cards_per_day"] - new_today)), "queued": queued}
+    due, left = sum(card.due <= utc for _, card, _ in intro), reviews_left(con, cfg)
+    return {"due": min(due, left), "later": max(0, due - left), "capped": left == 0,
+            "new": min(queued, max(0, cfg["new_cards_per_day"] - new_today), left - min(due, left)), "queued": queued}
 
 
 def next_card(con, c, cfg, exclude=None):
     """Due cards (oldest first), then new cards up to the daily limit (by frequency rank),
-    then learning cards due within the learn-ahead window."""
+    then learning cards due within the learn-ahead window. Nothing once today's review cap is reached."""
+    if not reviews_left(con, cfg):
+        return None
     utc, intro = datetime.now(timezone.utc), introduced(con)
     due = sorted((card.due, w, card) for w, card, _ in intro if card.due <= utc and w != exclude)
     if due:

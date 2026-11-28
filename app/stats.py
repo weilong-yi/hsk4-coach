@@ -2,7 +2,7 @@
 from collections import defaultdict
 from datetime import date, timedelta
 
-from . import db, study
+from . import db, momentum, study
 
 BLOCK_OF = {"card": "cards", "listen": "listen", "read_lookup": "listen", "shadow": "speak"}
 BLOCK_END = "block_end"  # item of the marker event each session block writes when it ends (time, skip, done, leave)
@@ -86,6 +86,7 @@ def compute(con, cfg, since=None):
              "projected_date": (today + timedelta(days=round(remaining / recent))).isoformat() if recent and remaining else None}
 
     return {"since": since, "per_day": per_day, "calibration": calibration,
+            "momentum": momentum.summary(momentum.load(con), cfg["momentum"], db.now()),
             "calibration_reviews": len(reviews),
             "learning_step_reviews": sum(r["before"]["state"] != "Review" for r in card_evs), "reading": reading, "words": words,
             "totals": {"cards": sum(d["cards"] for d in per_day), "listened": sum(d["listened"] for d in per_day),

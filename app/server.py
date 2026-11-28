@@ -1,24 +1,30 @@
 """Local HSK 4 coach: stdlib HTTP server for app/static/ plus a JSON API over data/study.db.
 
     .venv/bin/python -m app.server            # http://localhost:8766
-    .venv/bin/python -m app.server --db /tmp/x.db --port 8767
+    .venv/bin/python -m app.server --db /tmp/x.db --port 8767 --launch-agents /tmp/agents
 """
 import argparse, json, mimetypes, urllib.parse, random, re, secrets, threading, time, urllib.error, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import corpus, db, graph, obsidian, placement, stats, study, tts
+from . import corpus, db, graph, momentum, obsidian, placement, reminder, stats, study, tts
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
 AUDIO_CACHE = ROOT / "data" / "audio_native"
 CLIENT_ACTIVITIES = {"placement_vocab", "placement_listen", "placement_tone", "placement_read", "listen"}
 BLOCK_ACTIVITY = {"cards": "card", "listen": "listen", "speak": "shadow"}
+PLAN_TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 
 
 class App:
-    def __init__(self, db_path, config_path):
+    def __init__(self, db_path, config_path, launch_agents=None):
         self.db_path = Path(db_path)
+        # Only the learner's real database syncs the Obsidian vault and installs the reminder; e2e and verify runs
+        # use throwaway DBs. --launch-agents points the reminder at a test folder and never calls launchctl.
+        self.real_db = self.db_path.resolve() == (ROOT / "data" / "study.db").resolve()
+        self.launch_agents = Path(launch_agents) if launch_agents else None
+        self.reminder_dir = self.launch_agents or (reminder.AGENTS if self.real_db else None)
         self.rec_dir = self.db_path.parent / "recordings"
         self.cfg = json.loads(Path(config_path).read_text())
         self.c = corpus.load()
@@ -37,7 +43,27 @@ class App:
     def state(self, con, _):
         return {"placement": db.get_profile(con, "placement"), "config": self.cfg,
                 "queue": study.queue_counts(con, self.cfg), "known": len(study.known_set(con)),
-                "resume": study.resume_state(con, self.cfg)}
+                "resume": study.resume_state(con, self.cfg), "momentum": self.momentum_state(con, None)}
+
+    def momentum_state(self, con, _):
+        out = momentum.summary(momentum.load(con), self.cfg["momentum"], db.now())
+        return {**out, "plan": db.get_profile(con, "plan"),
+                "reminder": bool(self.reminder_dir and reminder.plist_path(self.reminder_dir).exists())}
+
+    def plan(self, con, body):
+        cue, at = str(body.get("cue", "")).strip(), str(body.get("time", ""))
+        if not 0 < len(cue) <= 80 or not PLAN_TIME.fullmatch(at):
+            raise ValueError("a plan needs a cue of 1-80 characters and a time as HH:MM")
+        plan = {"cue": cue, "time": at}
+        with con:
+            db.set_profile(con, "plan", plan)
+        if self.reminder_dir is None:
+            return {"plan": plan, "reminder": None}
+        try:
+            path = reminder.install(at, self.db_path, self.reminder_dir, load=self.launch_agents is None)
+        except OSError as e:
+            return {"plan": plan, "reminder": {"error": str(e)}}
+        return {"plan": plan, "reminder": {"path": str(path)}}
 
     def placement_start(self, con, _):
         items = placement.build(self.c, self.rng)
@@ -56,12 +82,20 @@ class App:
     def reading_start(self, con, _):
         return {"session_id": self.new_session("R"), **placement.reading(self.c, study.known_set(con), self.rng)}
 
-    def session_start(self, con, _):
-        """Resume today's unfinished session if there is one, else start a new one."""
-        resume = study.resume_state(con, self.cfg)
-        sid = resume["session_id"] if resume else self.new_session("S")
-        return {"session_id": sid, "blocks": self.cfg["blocks"], "queue": study.queue_counts(con, self.cfg), "resume": resume,
+    def session_start(self, con, body):
+        """A quick session is a fresh 5-minute cards block (id prefix Q, never resumed). A daily session resumes
+        today's unfinished one if there is one, else starts a new one."""
+        if body.get("quick"):
+            resume, sid = None, self.new_session("Q")
+            blocks = [{"id": "cards", "title": "Cards", "minutes": self.cfg["momentum"]["quick_minutes"]}]
+        else:
+            resume = study.resume_state(con, self.cfg)
+            sid, blocks = resume["session_id"] if resume else self.new_session("S"), self.cfg["blocks"]
+        return {"session_id": sid, "blocks": blocks, "queue": study.queue_counts(con, self.cfg), "resume": resume,
                 "obsidian": self.cfg.get("obsidian")}
+
+    def session_summary(self, con, body):
+        return momentum.feedback(momentum.load(con), body["session_id"], self.cfg["momentum"], db.now())
 
     def event(self, con, body):
         if body["activity"] not in CLIENT_ACTIVITIES:
@@ -76,7 +110,9 @@ class App:
             tts.prefetch([card["w"]], self.cfg["tts_voice"], study.TTS_RATE["word"])
             if card.get("example") and not card["example"].get("audio"):
                 tts.prefetch([card["example"]["zh"]], self.cfg["tts_voice"], study.TTS_RATE["sentence"])
-        return {"card": card}
+            return {"card": card}
+        q = study.queue_counts(con, self.cfg)
+        return {"card": None, "capped": q["capped"], "later": q["later"]}
 
     def cards_review(self, con, body):
         if body["rating"] not in study.RATINGS:
@@ -86,8 +122,7 @@ class App:
     def sync_vault(self):
         """Mirror study.db into the Obsidian vault in the background (about 0.2 s). Skipped if the vault is absent."""
         cfg = self.cfg.get("obsidian")
-        # Only the learner's real database mirrors into the vault; e2e and verify runs use throwaway DBs.
-        if not cfg or self.db_path.resolve() != (ROOT / "data" / "study.db").resolve():
+        if not cfg or not self.real_db:
             return
 
         def run():
@@ -146,6 +181,9 @@ ROUTES = {
     ("POST", "/api/placement/finish"): App.placement_finish,
     ("POST", "/api/reading/start"): App.reading_start,
     ("POST", "/api/session/start"): App.session_start,
+    ("POST", "/api/session/summary"): App.session_summary,
+    ("GET", "/api/momentum"): App.momentum_state,
+    ("POST", "/api/plan"): App.plan,
     ("POST", "/api/event"): App.event,
     ("POST", "/api/cards/next"): App.cards_next,
     ("POST", "/api/cards/review"): App.cards_review,
@@ -280,8 +318,9 @@ def main():
     ap.add_argument("--db", default=str(ROOT / "data" / "study.db"))
     ap.add_argument("--config", default=str(ROOT / "app" / "config.json"))
     ap.add_argument("--port", type=int, default=8766)
+    ap.add_argument("--launch-agents", help="write the reminder LaunchAgent here without loading it (tests)")
     args = ap.parse_args()
-    app = App(args.db, args.config)
+    app = App(args.db, args.config, args.launch_agents)
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(app))
     print(f"HSK 4 coach on http://localhost:{args.port}  (db {app.db_path})", flush=True)
     srv.serve_forever()

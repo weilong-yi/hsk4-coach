@@ -17,6 +17,10 @@ def pct(x):
     return "–" if x is None else f"{round(100 * x)}%"
 
 
+def share(x, n):
+    return f"{x['met']} of {x['days']} days in the last {n} ({pct(x['rate'])})"
+
+
 def report(s, days):
     w, out = s["words"], []
     out.append(f"# HSK 4 coach: last {days} days (since {s['since']})\n")
@@ -24,6 +28,10 @@ def report(s, days):
                f"{w['learning']} learning, {w['mature']} mature). **Solid** {w['solid']}.")
     out.append(f"**Pace** needed {w['needed_per_day']}/day for {w['days_left']} days to {w['target_date']}; "
                f"recent {w['recent_per_day']}/day" + (f", on track for {w['projected_date']}." if w["projected_date"] else "."))
+    m = s["momentum"]
+    out.append(f"**Momentum** {m['streak']}-day streak, {m['freezes']} freeze{'' if m['freezes'] == 1 else 's'} saved. "
+               f"**Minimum met** {share(m['share']['last7'], 7)}, {share(m['share']['last28'], 28)}. "
+               "Days before your first study day are left out, and today counts once its minimum is met.")
     out.append("\n## Per day\n")
     out.append("| Date | Cards min | Listen min | Speak min | Reviews | New | Sentences | Understood | Lookups | Shadow attempts | Shadow understood |")
     out.append("|---|---|---|---|---|---|---|---|---|---|---|")
