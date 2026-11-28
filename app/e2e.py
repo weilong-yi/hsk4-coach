@@ -1,6 +1,8 @@
 """End-to-end run on the real surface: headless Google Chrome with a fake mic and camera drives the placement,
-one full daily session (block timers sped up with ?timescale), a reading check, and the stats page, against a
-throwaway database. Then it checks the database, the WAV files on disk, and tools/weekly.py.
+a 5-minute session, one full daily session (block timers sped up with ?timescale), a reading check, and the stats
+page, against a throwaway database. Then it checks the database, the WAV files on disk, and tools/weekly.py.
+A second server over a copy of that database, with three weeks of seeded history, a lowered review cap and a temp
+LaunchAgents folder, checks the streak calendar, the plan and its reminder plist, and the review cap.
 
     .venv/bin/python app/e2e.py            # screenshots go to app/screenshots/
 
@@ -8,15 +10,22 @@ Headless Chrome's speech recognition starts but never returns a transcript, so t
 only on its empty/error path. One extra attempt swaps in a scripted recognizer that emits Safari-style cumulative
 results, to check the merge rule and the scored view. Real-mic transcription is not verified here.
 """
-import json, re, socket, subprocess, sys, tempfile, time, wave
+import json, plistlib, re, socket, sqlite3, subprocess, sys, tempfile, time, wave
 from collections import Counter
+from datetime import datetime, timedelta, timezone
+from datetime import time as clock_time
 from pathlib import Path
 
 import numpy as np
+from fsrs import Card
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from app import db, momentum, reminder  # noqa: E402
+
 SHOTS = ROOT / "app" / "screenshots"
+REAL_AGENT = reminder.plist_path(reminder.AGENTS)  # must never be written by this run
 PORT = 8767
 TIMESCALE = 30
 URL = f"http://localhost:{PORT}/?timescale={TIMESCALE}"
@@ -254,6 +263,231 @@ def session(page):
             "released_after_next": released_after_next, "scripted_finals": finals, "scripted_target": zh, "scripted": scored}
 
 
+def momentum_text(page):
+    return {"rings": page.locator(".rings .ring-label").all_text_contents(), "streak": page.locator(".streak-n").inner_text(),
+            "freezes": page.locator(".freezes").inner_text(), "minimum": page.locator(".minimum").inner_text()}
+
+
+def quick_session(page, ratings=12, easy=3):
+    """The 5-minute session from Home. Rates the first `easy` cards Easy (a new card rated Easy moves straight into
+    review) and the rest Again (which keeps a card in learning), then skips the rest of the block. Returns failures
+    and what it saw."""
+    fails = []
+    page.goto(URL.replace(f"timescale={TIMESCALE}", "timescale=10") + "#/home")  # 30 s of block time for 12 cards
+    expect(page.get_by_role("heading", name="Today")).to_be_visible()
+    before = momentum_text(page)
+    with page.expect_response("**/api/session/start") as r:
+        page.get_by_role("link", name="5-minute session").click()
+    start = r.value.json()
+    expect(page.get_by_role("heading", name="Cards · 5 minutes")).to_be_visible()
+    page.keyboard.press("Enter")
+    easy_words, new_words = [], []
+    for n in range(ratings):
+        expect(page.locator(".card.front")).to_be_visible()
+        page.wait_for_timeout(400)  # let the word start playing, as a learner would; card events log the voice heard
+        page.keyboard.press("Space")
+        back = page.locator(".card.back")
+        expect(back).to_be_visible()
+        word = back.locator(".hanzi.xl").inner_text()
+        if back.locator(".badge.new").count():
+            new_words.append(word)
+        with page.expect_response("**/api/cards/review"):
+            page.keyboard.press("4" if n < easy else "1")
+        if n < easy:
+            easy_words.append(word)
+    with page.expect_response("**/api/session/summary") as r:
+        page.get_by_role("button", name="Skip block →").click()
+    feedback = r.value.json()
+    expect(page.get_by_role("heading", name="Session complete")).to_be_visible()
+    shot(page, "32-quick-session-complete", full=True)
+    done = {**momentum_text(page), "moved": page.locator(".progress-item", has_text="Moved forward").inner_text(),
+            "new": page.locator(".progress-item", has_text="New words").inner_text(),
+            "tiles": page.locator(".tile .label").all_inner_texts()}
+    page.goto(URL + "#/home")  # back to the run's timescale for the full session
+    expect(page.get_by_role("heading", name="Today")).to_be_visible()
+    after = momentum_text(page)
+    plan_text = page.locator(".plan").inner_text()
+    today_cell = page.locator(".calendar .weeks .day.today").get_attribute("class")
+
+    if not start["session_id"].startswith("Q") or start["blocks"] != [{"id": "cards", "title": "Cards", "minutes": 5}]:
+        fails.append(f"quick session start: {start['session_id']} {start['blocks']}")
+    if before["rings"] != ["Cards 0/20", "Listen 0/15", "Speak 0/5"] or before["streak"] != "No streak yet" \
+            or before["minimum"] != "10 cards would count today.":
+        fails.append(f"home before the quick session: {before}")
+    if done["rings"][0] != f"Cards {ratings}/20" or "1-day streak" not in done["streak"] or "+1 today" not in done["streak"]:
+        fails.append(f"quick session complete: rings/streak {done}")
+    if not done["moved"].startswith(f"Moved forward\n{easy} words now in review") or any(w not in done["moved"] for w in easy_words):
+        fails.append(f"moved forward should list the {easy} Easy words {easy_words}: {done['moved']!r}")
+    if not done["new"].startswith(f"New words\n{len(new_words)} words started") or any(w not in done["new"] for w in new_words):
+        fails.append(f"new words should list {new_words}: {done['new']!r}")
+    if done["tiles"] != ["Cards"]:
+        fails.append(f"quick session tiles should be Cards only: {done['tiles']}")
+    if after["rings"][0] != f"Cards {ratings}/20" or after["streak"] != "1-day streak" or after["minimum"] != "Today's minimum is met.":
+        fails.append(f"home after the quick session: {after}")
+    if "null" in plan_text or "Save plan" not in plan_text:
+        fails.append(f"plan box without a plan: {plan_text!r}")
+    if "met" not in today_cell.split():
+        fails.append(f"today's calendar cell is not met: {today_cell}")
+    return fails, {"session_id": start["session_id"], "before": before, "complete": done, "after": after,
+                   "easy_words": easy_words, "new_words": new_words, "met_now": feedback["met_now"]}
+
+
+# Study-day offsets from today with 8 listening answers each (the minimum). Expected walk, oldest first:
+# 3 met, a miss with no freeze (reset), 7 met (a freeze), a miss (frozen), 8 met (another freeze), then today.
+SEED_MET = [-20, -19, -18, *range(-16, -9), *range(-8, 0)]
+LATE_NIGHT = -10  # seeded at 01:30 the next calendar morning, which still belongs to this study day
+
+
+def seed_history(db_path, start_hour):
+    """Past listening days per SEED_MET, and every introduced card made two days overdue, as after a break.
+    Returns the size of that review backlog."""
+    con = sqlite3.connect(db_path)
+    today = momentum.study_day(db.now(), start_hour)
+    overdue = datetime.now(timezone.utc) - timedelta(days=2)
+    cards = con.execute("SELECT word, fsrs_json FROM cards WHERE introduced_at IS NOT NULL").fetchall()
+    with con:
+        for word, js in cards:
+            card = Card.from_json(js)
+            card.due = overdue
+            con.execute("UPDATE cards SET fsrs_json=? WHERE word=?", (card.to_json(), word))
+        for off in SEED_MET:
+            day = today + timedelta(days=off)
+            when = datetime.combine(day + timedelta(days=1), clock_time(1, 30)) if off == LATE_NIGHT else datetime.combine(day, clock_time(12))
+            for k in range(8):
+                con.execute("INSERT INTO events(ts, session_id, activity, item, result_json, ms) VALUES (?,?,?,?,?,?)",
+                            (when.astimezone().isoformat(timespec="milliseconds"), f"S{day:%Y%m%d}-120000-seed", "listen", str(k + 1),
+                             json.dumps({"understood": k % 4 != 0, "block": "listen", "block_ms": 1000 * k}), 1000))
+    con.close()
+    return len(cards)
+
+
+def history_journey(browser, db_path, tmp):
+    """A second server over a copy of the run's database plus seeded history and an overdue backlog. Its config caps
+    reviews at today's count + 3 and its reminder goes to a temp LaunchAgents folder (launchctl is never called)."""
+    fails = []
+    home = tmp / "history"
+    home.mkdir()
+    db2, agents = home / "study.db", home / "LaunchAgents"
+    src, dst = sqlite3.connect(db_path), sqlite3.connect(db2)
+    src.backup(dst)
+    src.close(), dst.close()
+    cfg = json.loads((ROOT / "app" / "config.json").read_text())
+    m = cfg["momentum"]
+    backlog = seed_history(db2, m["day_starts_hour"])
+    today = momentum.study_day(db.now(), m["day_starts_hour"])
+    con = sqlite3.connect(db2)
+    reviewed = sum(momentum.study_day(datetime.fromisoformat(ts), m["day_starts_hour"]) == today for (ts,) in
+                   con.execute("SELECT ts FROM events WHERE activity='card' AND item!='block_end'"))
+    con.close()
+    m["max_reviews_per_day"] = cap = reviewed + 3
+    (home / "config.json").write_text(json.dumps(cfg))
+    port = PORT + 1
+    server = subprocess.Popen([sys.executable, "-m", "app.server", "--db", str(db2), "--config", str(home / "config.json"),
+                               "--port", str(port), "--launch-agents", str(agents)],
+                              cwd=ROOT, stdout=open(home / "server.log", "w"), stderr=subprocess.STDOUT)
+    url = f"http://localhost:{port}/?timescale={TIMESCALE}"
+    ctx = browser.new_context(viewport={"width": 1100, "height": 900})
+    page = ctx.new_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(f"history pageerror: {e}"))
+    try:
+        wait_port(port)
+        page.goto(url + "#/home")
+        expect(page.get_by_role("heading", name="Today")).to_be_visible()
+        seen = momentum_text(page)
+        cells = Counter(c.split()[1] for c in page.locator(".calendar .weeks .day").evaluate_all("els => els.map(e => e.className)"))
+        ahead = 6 - today.weekday()
+        want = {"none": 7 - ahead, "met": 19, "missed": 1, "frozen": 1, **({"future": ahead} if ahead else {})}
+        if dict(cells) != want:
+            fails.append(f"calendar cells {dict(cells)}, expected {want}")
+        if seen["streak"] != "16-day streak" or seen["freezes"] != "1 freeze saved · next one after 5 more days in a row":
+            fails.append(f"seeded streak: {seen}")
+        due_tile = page.locator(".tile", has_text="Reviews due").inner_text()
+        if due_tile != f"Reviews due\n3\n{backlog - 3} more spread over the next days":
+            fails.append(f"reviews due with {backlog} overdue and 3 left under the cap: {due_tile!r}")
+
+        page.locator(".plan input[name=time]").fill("07:15")
+        page.locator(".plan input[name=cue]").fill("Before breakfast")
+        page.get_by_role("button", name="Save plan").click()
+        expect(page.get_by_text("If it's 07:15 before breakfast, I study.")).to_be_visible()
+        first = plistlib.loads(reminder.plist_path(agents).read_bytes())
+        page.get_by_role("button", name="Edit").click()
+        page.get_by_role("button", name="Cancel").click()
+        expect(page.get_by_text("If it's 07:15 before breakfast, I study.")).to_be_visible()
+        page.get_by_role("button", name="Edit").click()
+        page.locator(".plan input[name=time]").fill("19:30")
+        page.locator(".plan input[name=cue]").fill("After dinner at my desk")
+        shot(page, "33-plan-form")
+        page.get_by_role("button", name="Save plan").click()
+        expect(page.get_by_text("If it's 19:30 after dinner at my desk, I study.")).to_be_visible()
+        plist = plistlib.loads(reminder.plist_path(agents).read_bytes())
+        page.reload()
+        expect(page.get_by_text("If it's 19:30 after dinner at my desk, I study.")).to_be_visible()
+        expect(page.get_by_text("A reminder shows at 19:30 on this Mac if today's minimum isn't met.")).to_be_visible()
+        plan_text = page.locator(".plan").inner_text()
+        if "null" in plan_text or "undefined" in plan_text:
+            fails.append(f"plan box: {plan_text!r}")
+        page.wait_for_timeout(300)
+        shot(page, "34-home-momentum-light", full=True)
+        page.emulate_media(color_scheme="dark")
+        page.wait_for_timeout(200)
+        shot(page, "35-home-momentum-dark", full=True)
+        page.emulate_media(color_scheme="light")
+        if first["StartCalendarInterval"] != {"Hour": 7, "Minute": 15}:
+            fails.append(f"first plan plist: {first['StartCalendarInterval']}")
+        if plist["StartCalendarInterval"] != {"Hour": 19, "Minute": 30} or plist["Label"] != reminder.LABEL \
+                or plist["ProgramArguments"][1:] != ["-m", "app.reminder", "--notify", "--db", str(db2)] or plist["WorkingDirectory"] != str(ROOT):
+            fails.append(f"reminder plist: {plist}")
+        if sorted(p.name for p in agents.iterdir()) != [f"{reminder.LABEL}.plist"]:
+            fails.append(f"LaunchAgents folder holds {sorted(p.name for p in agents.iterdir())}")
+        lint = subprocess.run(["plutil", "-lint", str(reminder.plist_path(agents))], capture_output=True, text=True)
+        if lint.returncode:
+            fails.append(f"plutil: {lint.stdout}")
+        met = subprocess.run([sys.executable, "-m", "app.reminder", "--notify", "--print", "--db", str(db2)], cwd=ROOT, capture_output=True, text=True)
+        unmet_db = home / "unmet.db"
+        con = db.connect(unmet_db)
+        with con:
+            db.set_profile(con, "plan", {"cue": "After dinner at my desk", "time": "19:30"})
+        con.close()
+        unmet = subprocess.run([sys.executable, "-m", "app.reminder", "--notify", "--print", "--db", str(unmet_db)], cwd=ROOT, capture_output=True, text=True)
+        if met.stdout.strip() != "no reminder: no plan, or today's minimum is met":
+            fails.append(f"reminder check with today met: {met.stdout!r} {met.stderr[-300:]}")
+        if unmet.stdout.strip() != "notify: After dinner at my desk: time for Chinese (http://localhost:8766)":
+            fails.append(f"reminder check with today unmet: {unmet.stdout!r} {unmet.stderr[-300:]}")
+
+        page.get_by_role("link", name="5-minute session").click()
+        expect(page.get_by_role("heading", name="Cards · 5 minutes")).to_be_visible()
+        page.keyboard.press("Enter")
+        rated, capped = 0, page.get_by_text("Today's reviews are done")
+        for _ in until(page, capped.is_visible, "review-cap", seconds=60):
+            if page.locator(".card.front").is_visible():
+                page.keyboard.press("Space")
+            elif page.locator(".card.back").is_visible():
+                with page.expect_response("**/api/cards/review"):
+                    page.keyboard.press("3")
+                rated += 1
+            page.wait_for_timeout(100)
+        shot(page, "36-cards-review-cap")
+        cap_text = page.locator(".card p").first.inner_text()
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("heading", name="Session complete")).to_be_visible()
+        con = sqlite3.connect(db2)
+        after = sum(momentum.study_day(datetime.fromisoformat(ts), m["day_starts_hour"]) == today for (ts,) in
+                    con.execute("SELECT ts FROM events WHERE activity='card' AND item!='block_end'"))
+        con.close()
+        if rated != 3 or after != cap:
+            fails.append(f"review cap {cap}: rated {rated} in the capped session, {after} reviews today")
+        if cap_text != f"Today's reviews are done; {backlog - 3} more are spread over the next days.":
+            fails.append(f"cap message with {backlog} overdue: {cap_text!r}")
+    finally:
+        ctx.close()
+        server.terminate()
+    return fails + errors, {"calendar": dict(cells), "home": seen, "plist": {k: plist[k] for k in ("StartCalendarInterval", "ProgramArguments")},
+                            "reminder_met": met.stdout.strip(), "reminder_unmet": unmet.stdout.strip(),
+                            "backlog": backlog, "reviews_due_tile": due_tile, "cap": cap, "rated_before_cap": rated,
+                            "reviews_today": after, "cap_message": cap_text}
+
+
 def graph_journey(page):
     """Graph page: open by URL, search by pinyin, toggle depth, click a node to recenter. Returns failures."""
     fails = []
@@ -411,6 +645,7 @@ def main():
     for old in SHOTS.glob("*.png"):
         old.unlink()
     tmp = Path(tempfile.mkdtemp(prefix="hsk4-e2e-"))
+    real_agent = (REAL_AGENT.exists(), REAL_AGENT.exists() and REAL_AGENT.stat().st_mtime)
     db_path = tmp / "study.db"
     server = subprocess.Popen([sys.executable, "-m", "app.server", "--db", str(db_path), "--port", str(PORT)],
                               cwd=ROOT, stdout=open(tmp / "server.log", "w"), stderr=subprocess.STDOUT)
@@ -429,6 +664,9 @@ def main():
             page.on("response", lambda r: tts.append(r.status) if "/tts?" in r.url else None)
             print("placement")
             _, reading = placement(page)
+            print("quick session")
+            quick_fail, quick = quick_session(page)
+            failures += quick_fail
             print("session")
             s = session(page)
             merge = page.evaluate("import('/js/speech.js').then(m => [m.mergeFinal('你好', '你好吗'), m.mergeFinal('你好', '，再见')])")
@@ -440,6 +678,8 @@ def main():
             print("stats")
             page.goto(URL + "#/stats")
             expect(page.get_by_role("heading", name="Progress")).to_be_visible()
+            streak_tile = page.locator(".tile", has_text="Streak").inner_text()
+            share_tile = page.locator(".tile", has_text="Minimum met, last 7 days").inner_text()
             page.wait_for_timeout(500)
             page.locator("figure .viz").first.hover(position={"x": 600, "y": 100})
             shot(page, "24-stats", full=True)
@@ -452,6 +692,9 @@ def main():
             print("resume")
             resume_fail, resume = resume_journey(browser, page, db_path)
             failures += resume_fail
+            print("history, plan and review cap")
+            history_fail, history = history_journey(browser, db_path, tmp)
+            failures += history_fail
             browser.close()
         if not s["released_after_attempt"]:
             failures.append("mic tracks still live after an attempt finished")
@@ -467,6 +710,12 @@ def main():
                                 capture_output=True, text=True, cwd=ROOT)
         if weekly.returncode or "## Per day" not in weekly.stdout:
             failures.append(f"weekly.py failed: {weekly.stderr[-500:]}")
+        if "**Momentum** 1-day streak, 0 freezes saved. **Minimum met** 1 of 1 days in the last 7 (100%)" not in weekly.stdout:
+            failures.append("weekly.py momentum line missing or wrong")
+        if not streak_tile.startswith("Streak\n1 day") or not share_tile.startswith("Minimum met, last 7 days\n1 of 1 days"):
+            failures.append(f"stats momentum tiles: {streak_tile!r} {share_tile!r}")
+        if REAL_AGENT.exists() != real_agent[0] or (REAL_AGENT.exists() and REAL_AGENT.stat().st_mtime != real_agent[1]):
+            failures.append(f"{REAL_AGENT} changed during the run")
         if not tts or tts.count(200) < 0.9 * len(tts):
             failures.append(f"server TTS not used or failing: {dict(Counter(tts))}")
         voices = Counter(json.loads(r[0]).get("voice") for r in __import__("sqlite3").connect(db_path).execute(
@@ -480,6 +729,7 @@ def main():
         failures += [e for e in errors if e not in bad_gateway]
         print(json.dumps({"native_audio_responses": dict(Counter(audio)), "tts_responses": dict(Counter(tts)), "card_tone_voices": dict(voices),
                           "session": {k: v for k, v in s.items() if k != "scripted"}, "scripted_score": s["scripted"]["score"],
+                          "quick": quick, "history": history, "stats_tiles": [streak_tile, share_tile],
                           "resume": resume, "graph": graph,
                           "db": summary}, ensure_ascii=False, indent=1))
         print(weekly.stdout)
