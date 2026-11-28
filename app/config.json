@@ -27,5 +27,16 @@
   "obsidian": {
     "vault": "Chinese",
     "folder": "HSK"
+  },
+  "momentum": {
+    "day_starts_hour": 4,
+    "rings": {
+      "cards": 20,
+      "listen": 15,
+      "speak": 5
+    },
+    "minimum_fraction": 0.5,
+    "quick_minutes": 5,
+    "max_reviews_per_day": 60
   }
 }
