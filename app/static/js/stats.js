@@ -1,6 +1,7 @@
 import { get } from './api.js';
 import { tile } from './placement.js';
 import { h, pct } from './ui.js';
+import { freezeText } from './momentum.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const W = 640, H = 180, M = { l: 40, r: 12, t: 12, b: 24 };
@@ -113,6 +114,10 @@ function lastDays(n) {
   return out;
 }
 
+// Days before the first study day are not in the window, and today joins it once its minimum is met.
+const shareTile = (label, x, n) => tile(label, x.days ? `${x.met} of ${x.days} days` : '–',
+  x.days ? `${pct(x.rate)}${x.days < n ? ', counted from your first study day' : ''}` : 'no finished study days yet');
+
 export async function statsScreen(root) {
   const st = await get('/api/stats');
   const byDate = Object.fromEntries(st.per_day.map(d => [d.date, d]));
@@ -120,6 +125,7 @@ export async function statsScreen(root) {
   const w = st.words;
   const minutes = days.map(x => ({ label: x.label, values: x.d ? x.d.minutes : {} }));
   const active = st.per_day.slice(-WINDOW_DAYS);
+  const m = st.momentum;
 
   root.replaceChildren(h('section', { class: 'panel stats' },
     h('h1', {}, 'Progress'),
@@ -129,6 +135,10 @@ export async function statsScreen(root) {
       tile('Pace needed', `${w.needed_per_day} / day`, `${w.days_left} days to ${w.target_date}`),
       tile('Recent pace', `${w.recent_per_day} / day`, w.projected_date ? `on track for ${w.projected_date}` : 'no new cards in 14 days')),
     h('div', { class: 'meter wide' }, h('div', { style: `width:${(100 * w.started) / w.target}%` }), h('div', { class: 'solid', style: `width:${(100 * w.solid) / w.target}%` })),
+    h('div', { class: 'tiles' },
+      tile('Streak', `${m.streak} day${m.streak === 1 ? '' : 's'}`, freezeText(m)),
+      shareTile('Minimum met, last 7 days', m.share.last7, 7),
+      shareTile('Minimum met, last 28 days', m.share.last28, 28)),
 
     figure('Minutes per block', `last ${WINDOW_DAYS} days, on each block's timer from start to end`,
       columns(minutes, BLOCKS, v => (v < 10 ? v.toFixed(1).replace(/\.0$/, '') : Math.round(v))),

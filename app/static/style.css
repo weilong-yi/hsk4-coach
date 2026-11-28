@@ -260,3 +260,45 @@ th { font-weight: 600; color: var(--muted); font-size: 13px; }
 .chip:hover { background: var(--soft); }
 .graph-panel .obsidian-link { display: inline-block; margin-top: 6px; color: var(--accent); }
 .popover .graph-link { display: inline-block; margin: 6px 12px 0 0; color: var(--accent); font-size: 14px; }
+
+/* Momentum: today's rings, streak, calendar strip, plan, session feedback */
+.momentum { display: grid; grid-template-columns: minmax(0, 336px) 1fr; gap: 8px 28px; align-items: center; margin: 4px 0 0; }
+.rings { width: 100%; height: auto; display: block; }
+.rings .track { fill: none; stroke-opacity: .18; }
+.rings .arc { fill: none; stroke-linecap: round; }
+.rings .tick { stroke: var(--viz-ink2); stroke-width: 1.5; stroke-linecap: round; }
+.rings .ring-label { font: 13px var(--ui); fill: var(--viz-ink); text-anchor: middle; }
+.rings .ring-label .count { fill: var(--viz-ink2); font-variant-numeric: tabular-nums; }
+.streak-n { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.streak-n .gain { font-size: 14px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 999px; }
+.momentum-text p { margin: 2px 0 0; }
+.momentum-text .minimum { margin-top: 10px; }
+.calendar { margin: 16px 0 0; }
+.weeks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.days { display: flex; gap: 3px; }
+.day { display: inline-block; width: 16px; height: 16px; border-radius: 4px; flex: none; }
+.day.met { background: var(--accent); }
+.day.frozen { background: repeating-linear-gradient(135deg, var(--accent) 0 2px, var(--accent-soft) 2px 5px); }
+.day.missed { background: var(--line); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted) 50%, transparent); }
+.day.future { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--muted) 70%, transparent); border-radius: 50%; transform: scale(.5); }
+.day.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+.week-label { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.cal-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-legend .day { width: 12px; height: 12px; border-radius: 3px; }
+.cal-legend .day.future { transform: scale(.6); }
+.plan { margin: 16px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.plan p { margin: 6px 0 0; font-size: 14px; }
+.plan-line, .plan-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.plan-line .link { margin-left: auto; }
+.plan-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.plan-form p { flex-basis: 100%; margin: 0; }
+.plan input { font: inherit; font-size: 15px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.plan input[type=text] { flex: 1 1 220px; min-width: 0; }
+.progress-list { display: grid; gap: 12px; margin: 20px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.progress-item b { display: block; font-size: 13px; color: var(--muted); font-weight: 600; }
+.progress-item .chips { display: inline-flex; vertical-align: middle; margin-left: 4px; }
+.progress-item .chip { font-family: var(--hanzi); }
+@media (max-width: 640px) {
+  .momentum { grid-template-columns: 1fr; }
+}

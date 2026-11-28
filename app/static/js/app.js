@@ -5,6 +5,7 @@ import { sessionScreen } from './session.js';
 import { statsScreen } from './stats.js';
 import { graphScreen } from './graph.js';
 import { h, Scope, toast, pct } from './ui.js';
+import { todayView, calendarStrip, planView } from './momentum.js';
 
 async function homeScreen(root) {
   const st = await get('/api/state');
@@ -17,10 +18,14 @@ async function homeScreen(root) {
     return;
   }
   const w = await get('/api/stats').then(s => s.words);
+  const m = st.momentum, q = st.queue;
   root.replaceChildren(h('section', { class: 'panel' },
     h('h1', {}, 'Today'),
+    todayView(m),
+    calendarStrip(m.days),
+    planView(m),
     h('div', { class: 'tiles' },
-      tile('Reviews due', st.queue.due, 'cards'),
+      tile('Reviews due', q.due, q.later ? `${q.later} more spread over the next days` : 'cards'),
       tile('New words', st.queue.new, `of ${st.config.new_cards_per_day} per day`),
       tile('Words started', `${w.started} / ${w.target}`, `${w.solid} solid (known or mature)`),
       tile('Pace needed', `${w.needed_per_day}/day`, `to reach ${w.target} by ${w.target_date}`)),
@@ -28,6 +33,7 @@ async function homeScreen(root) {
     h('div', { class: 'row end' },
       h('a', { class: 'button', href: '#/reading' }, 'Reading check'),
       h('a', { class: 'button', href: '#/placement' }, 'Retake placement'),
+      h('a', { class: 'button', href: '#/session?quick=1' }, `${st.config.momentum.quick_minutes}-minute session`),
       h('a', { class: 'button primary', href: '#/session' }, st.resume
         ? `Resume session · ${st.config.blocks[st.resume.block].title}`
         : `Start ${st.config.blocks.reduce((a, b) => a + b.minutes, 0)}-minute session`)),
@@ -41,7 +47,7 @@ async function route() {
   if (scope) scope.close();
   stopAudio();
   scope = new Scope();
-  const name = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';
+  const name = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0] || 'home';
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === name));
   const main = document.getElementById('main');
   main.replaceChildren();

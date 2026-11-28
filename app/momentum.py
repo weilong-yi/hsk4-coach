@@ -52,7 +52,7 @@ def is_met(counts, cfg):
 def rings(counts, cfg):
     need = minimums(cfg)
     return [{"id": r, "label": LABELS[r], "count": counts.get(r, 0), "target": cfg["rings"][r], "minimum": need[r],
-             "fill": min(1, counts.get(r, 0) / cfg["rings"][r])} for r in RINGS]
+             "minimum_fill": cfg["minimum_fraction"], "fill": min(1, counts.get(r, 0) / cfg["rings"][r])} for r in RINGS]
 
 
 def next_step(counts, cfg):

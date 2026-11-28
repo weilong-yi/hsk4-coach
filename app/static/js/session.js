@@ -4,6 +4,7 @@ import { pinyin } from './pinyin.js';
 import { Attempt, errorMessage, blobToBase64 } from './speech.js';
 import { h, step, BlockTimer, kbd, nextButton, elapsed, pct, toast } from './ui.js';
 import { tile } from './placement.js';
+import { todayView, progressView } from './momentum.js';
 
 const ABOUT = {
   cards: 'Listen to each word first and recall its meaning, then reveal and rate yourself. Due reviews come first, then new words.',
@@ -31,8 +32,12 @@ export function sentenceView(s, { onTap, highlight, marks = {} } = {}) {
 async function cardsBlock(ctx) {
   let last = null;
   while (!ctx.timer.expired) {
-    const { card } = await post('/api/cards/next', { session_id: ctx.sid, exclude: last });
-    if (!card) return finished(ctx, 'No more cards due today. New words are capped at the daily limit.');
+    const { card, capped, later } = await post('/api/cards/next', { session_id: ctx.sid, exclude: last });
+    if (!card) {
+      return finished(ctx, capped
+        ? `Today's reviews are done${later ? `; ${later} more ${later === 1 ? 'is' : 'are'} spread over the next days` : ''}.`
+        : 'No more cards due today. New words are capped at the daily limit.');
+    }
     await reviewCard(ctx, card);
     last = card.w;
     ctx.tally.cards++;
@@ -300,7 +305,9 @@ export async function sessionScreen(root, scope) {
       h('p', {}, 'The session is built from your profile.'), h('a', { class: 'button primary', href: '#/placement' }, 'Start placement')));
     return;
   }
-  const s = await post('/api/session/start');
+  // #/session?quick=1 is the 5-minute session: one cards block under its own session id, never resumed.
+  const quick = new URLSearchParams(location.hash.split('?')[1]).has('quick');
+  const s = await post('/api/session/start', { quick });
   // Resuming continues the same session id, block and timer; the server rebuilds all of it from the event log.
   const tally = s.resume ? s.resume.tally : { cards: 0, listened: 0, understood: 0, lookups: 0, attempts: 0, scores: [] };
   const first = s.resume ? s.resume.block : 0;
@@ -336,14 +343,18 @@ export async function sessionScreen(root, scope) {
     stopAudio();
   }
   const scores = tally.scores;
+  const ran = new Set(s.blocks.map(b => b.id));
+  const fb = await post('/api/session/summary', { session_id: s.session_id });
   root.replaceChildren(h('section', { class: 'panel' },
     h('h1', {}, 'Session complete'),
     h('p', { class: 'muted' }, `${Math.round(elapsed(t0) / 60000)} minutes of real time.`),
+    todayView(fb, { gained: fb.met_now }),
+    progressView(fb),
     h('div', { class: 'tiles' },
-      tile('Cards', tally.cards, 'reviewed'),
-      tile('Listening', tally.listened, `${pct(tally.listened ? tally.understood / tally.listened : null)} understood`),
-      tile('Lookups', tally.lookups, 'words checked'),
-      tile('Shadowing', tally.attempts, scores.length ? `avg understood ${pct(scores.reduce((a, b) => a + b, 0) / scores.length)}` : 'no transcripts scored')),
+      ran.has('cards') && tile('Cards', tally.cards, 'reviewed'),
+      ran.has('listen') && tile('Listening', tally.listened, `${pct(tally.listened ? tally.understood / tally.listened : null)} understood`),
+      ran.has('listen') && tile('Lookups', tally.lookups, 'words checked'),
+      ran.has('speak') && tile('Shadowing', tally.attempts, scores.length ? `avg understood ${pct(scores.reduce((a, b) => a + b, 0) / scores.length)}` : 'no transcripts scored')),
     h('div', { class: 'row end' }, h('a', { class: 'button', href: '#/stats' }, 'Stats'), h('a', { class: 'button primary', href: '#/home' }, 'Home'))));
 }
 
