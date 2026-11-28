@@ -10,3 +10,5 @@ data/recordings/
 verify-runs/
 data/tts_cache/
 tools/exp_erhua/cache/
+data/*.db-shm
+data/*.db-wal
